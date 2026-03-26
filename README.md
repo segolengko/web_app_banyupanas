@@ -5,6 +5,14 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - Base schema setup for Banyupanas lives outside this app repo.
 - Ticket-cancellation migration used by the report module is included here:
   - `supabase_cancel_tiket.sql`
+- Report/query optimization helpers for larger datasets are included here:
+  - `supabase_report_optimization.sql`
+- Operational expense schema and report helpers are included here:
+  - `supabase_operational_expenses.sql`
+- Closing snapshot schema for daily receipt-style cash closing is included here:
+  - `supabase_cash_closing.sql`
+- Role hierarchy helper for `super_admin/admin/supervisor/petugas` is included here:
+  - `supabase_role_hierarchy.sql`
 
 ## Getting Started
 

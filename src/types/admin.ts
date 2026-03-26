@@ -5,6 +5,16 @@ export type StaffMember = {
   is_active: boolean
 }
 
+export type ManagedUserRole = 'super_admin' | 'admin' | 'supervisor' | 'petugas'
+
+export type ManagedUser = {
+  id: string
+  nama_lengkap: string
+  email: string
+  role: ManagedUserRole
+  is_active: boolean
+}
+
 export type TransactionProfile = {
   nama_lengkap: string
 }
@@ -39,6 +49,8 @@ export type ReportSummary = {
   tickets: number
   discount: number
   refund: number
+  expenses: number
+  netRevenue: number
   cancelledCount: number
   transactionCount: number
 }
@@ -51,5 +63,19 @@ export type DailyReportRow = {
   tickets: number
   discount: number
   refund: number
+  expenses: number
+  netRevenue: number
   revenue: number
+}
+
+export type ExpensePaymentMethod = 'tunai' | 'transfer' | 'qris' | 'lainnya'
+
+export type OperationalExpense = {
+  id: string
+  expense_at: string
+  nominal: number
+  category: string
+  description: string | null
+  payment_method: ExpensePaymentMethod
+  created_by_name: string | null
 }

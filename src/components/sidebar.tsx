@@ -3,8 +3,10 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import SidebarNav from './sidebar-nav'
+import { checkSupervisorAccess } from '@/utils/supabase/check-admin'
 
 export default async function Sidebar() {
+  const session = await checkSupervisorAccess()
   const supabase = await createClient()
   const { data: wisataProfile } = await supabase
     .from('profil_wisata')
@@ -21,6 +23,13 @@ export default async function Sidebar() {
 
   return (
     <aside className="sidebar">
+      <form action={signOut} className="admin-logout-top">
+        <button type="submit" className="nav-link logout-btn admin-logout-top-btn" style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+          <LogOut size={18} />
+          Keluar
+        </button>
+      </form>
+
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
@@ -91,33 +100,25 @@ export default async function Sidebar() {
         </div>
       </div>
 
-      <SidebarNav />
+      <SidebarNav role={session.role} />
 
-      <div style={{ marginTop: 'auto' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            marginBottom: '14px',
-            padding: '12px 14px',
-            borderRadius: '18px',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            color: 'var(--text-muted)',
-            fontSize: '13px',
-            fontWeight: 600,
-          }}
-        >
-          <Orbit size={16} color="var(--primary-color)" />
-          Sistem siap dipakai
-        </div>
-        <form action={signOut}>
-          <button type="submit" className="nav-link logout-btn" style={{ width: '100%', border: 'none', cursor: 'pointer', background: 'none', fontFamily: 'inherit' }}>
-            <LogOut size={20} />
-            Keluar
-          </button>
-        </form>
+      <div
+        style={{
+          marginTop: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '12px 14px',
+          borderRadius: '18px',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          color: 'var(--text-muted)',
+          fontSize: '13px',
+          fontWeight: 600,
+        }}
+      >
+        <Orbit size={16} color="var(--primary-color)" />
+        Sistem siap dipakai
       </div>
     </aside>
   )

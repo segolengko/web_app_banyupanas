@@ -1,7 +1,8 @@
 'use client'
 
-import { UserX, UserCheck, Trash2 } from 'lucide-react'
-import { toggleStaffStatus, deleteStaff } from './actions'
+import { FormEvent, useState, useTransition } from 'react'
+import { KeyRound, UserX, UserCheck, Trash2 } from 'lucide-react'
+import { toggleStaffStatus, deleteStaff, resetStaffPassword } from './actions'
 import type { StaffMember } from '@/types/admin'
 
 interface PetugasListProps {
@@ -9,6 +10,12 @@ interface PetugasListProps {
 }
 
 export default function PetugasList({ staff }: PetugasListProps) {
+  const [resetTarget, setResetTarget] = useState<StaffMember | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [resetError, setResetError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
   const getErrorMessage = (error: unknown) => {
     if (error instanceof Error) {
       return error.message
@@ -25,6 +32,53 @@ export default function PetugasList({ staff }: PetugasListProps) {
         alert('Gagal menghapus: ' + getErrorMessage(error))
       }
     }
+  }
+
+  const openResetModal = (staffMember: StaffMember) => {
+    setResetTarget(staffMember)
+    setNewPassword('')
+    setConfirmPassword('')
+    setResetError(null)
+  }
+
+  const closeResetModal = () => {
+    if (isPending) {
+      return
+    }
+
+    setResetTarget(null)
+    setNewPassword('')
+    setConfirmPassword('')
+    setResetError(null)
+  }
+
+  const handleResetPassword = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!resetTarget) {
+      return
+    }
+
+    if (newPassword.trim().length < 6) {
+      setResetError('Password baru minimal 6 karakter.')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setResetError('Konfirmasi password tidak sama.')
+      return
+    }
+
+    setResetError(null)
+
+    startTransition(async () => {
+      try {
+        await resetStaffPassword(resetTarget.id, newPassword)
+        closeResetModal()
+      } catch (error: unknown) {
+        setResetError(getErrorMessage(error))
+      }
+    })
   }
 
   return (
@@ -77,6 +131,20 @@ export default function PetugasList({ staff }: PetugasListProps) {
                     </button>
                   </form>
                   <button
+                    onClick={() => openResetModal(p)}
+                    style={{
+                      background: 'rgba(45, 212, 191, 0.12)',
+                      border: '1px solid rgba(45, 212, 191, 0.25)',
+                      color: '#99f6e4',
+                      padding: '8px',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                    }}
+                    title="Reset Password"
+                  >
+                    <KeyRound size={18} />
+                  </button>
+                  <button
                     onClick={() => handleDelete(p.id, p.nama_lengkap)}
                     style={{
                       background: 'rgba(239, 68, 68, 0.1)',
@@ -103,6 +171,101 @@ export default function PetugasList({ staff }: PetugasListProps) {
           )}
         </tbody>
       </table>
+
+      {resetTarget && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(2, 6, 23, 0.72)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          zIndex: 1000,
+          backdropFilter: 'blur(6px)',
+        }}>
+          <div className="glass-panel" style={{ width: 'min(100%, 480px)', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start', marginBottom: '18px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '22px' }}>Reset Password Petugas</h3>
+                <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  Password untuk <strong>{resetTarget.nama_lengkap}</strong> akan diganti langsung dari dashboard admin.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeResetModal}
+                disabled={isPending}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '999px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '24px',
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleResetPassword} style={{ display: 'grid', gap: '16px' }}>
+              <div className="input-group">
+                <label>Password Baru</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="Minimal 6 karakter"
+                  required
+                />
+              </div>
+
+              <div className="input-group">
+                <label>Konfirmasi Password Baru</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Ulangi password baru"
+                  required
+                />
+              </div>
+
+              {resetError && (
+                <div className="error-message" style={{ marginBottom: 0 }}>
+                  {resetError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={closeResetModal}
+                  disabled={isPending}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-color)',
+                    color: 'white',
+                    background: 'rgba(255,255,255,0.04)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Batal
+                </button>
+                <button type="submit" className="btn-primary" style={{ padding: '12px 16px' }} disabled={isPending}>
+                  {isPending ? 'Menyimpan...' : 'Reset Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

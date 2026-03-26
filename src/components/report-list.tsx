@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { FormEvent, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Download, Printer, Filter, Search, ChevronLeft, ChevronRight, Hash, User, Ticket, CreditCard, Banknote, RotateCcw, Rows3, CalendarDays, Ban, CircleDollarSign } from 'lucide-react'
+import { Calendar, Download, Printer, Filter, Search, ChevronLeft, ChevronRight, Hash, User, Ticket, CreditCard, Banknote, RotateCcw, Rows3, CalendarDays, Ban, CircleDollarSign, Wallet } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } from '@/types/admin'
 import { cancelTransactionAction } from '@/app/laporan/actions'
@@ -17,6 +17,7 @@ type ReportListProps = {
   summary: ReportSummary
   totalItems: number
   totalPages: number
+  canCancelTransaction: boolean
 }
 
 export default function ReportList({
@@ -26,6 +27,7 @@ export default function ReportList({
   summary,
   totalItems,
   totalPages,
+  canCancelTransaction,
 }: ReportListProps) {
   const router = useRouter()
   const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null)
@@ -201,9 +203,12 @@ export default function ReportList({
       </div>
 
       <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px', marginBottom: '40px' }}>
-        <SummaryCard title="Pendapatan Bersih" value={formatCurrency(summary.revenue)} icon={<Banknote size={24} />} color="#10B981" />
+        <SummaryCard title="Pendapatan Tiket Bersih" value={formatCurrency(summary.revenue)} icon={<Banknote size={24} />} color="#10B981" />
         <SummaryCard title="Tiket Valid" value={`${summary.tickets} Tiket`} icon={<Ticket size={24} />} color="#6366F1" />
+        <SummaryCard title="Total Diskon" value={formatCurrency(summary.discount)} icon={<CreditCard size={24} />} color="#FB7185" isNegative={summary.discount > 0} />
         <SummaryCard title="Total Refund" value={formatCurrency(summary.refund)} icon={<CircleDollarSign size={24} />} color="#F87171" isNegative={summary.refund > 0} />
+        <SummaryCard title="Total Pengeluaran" value={formatCurrency(summary.expenses)} icon={<Wallet size={24} />} color="#F59E0B" isNegative={summary.expenses > 0} />
+        <SummaryCard title="Saldo Bersih" value={formatCurrency(summary.netRevenue)} icon={<Banknote size={24} />} color="#22C55E" isNegative={summary.netRevenue < 0} />
         <SummaryCard title="Transaksi Batal" value={`${summary.cancelledCount} Transaksi`} icon={<Ban size={24} />} color="#F59E0B" />
       </div>
 
@@ -232,7 +237,8 @@ export default function ReportList({
                   <th style={{ padding: '20px' }}>Tiket Valid</th>
                   <th style={{ padding: '20px' }}>Diskon</th>
                   <th style={{ padding: '20px' }}>Refund</th>
-                  <th style={{ padding: '20px' }}>Pendapatan Bersih</th>
+                  <th style={{ padding: '20px' }}>Pengeluaran</th>
+                  <th style={{ padding: '20px' }}>Saldo Bersih</th>
                 </tr>
               )}
             </thead>
@@ -249,7 +255,13 @@ export default function ReportList({
                           {transaction.id.substring(0, 8)}...
                         </td>
                         <td style={{ padding: '20px' }}>
-                          {new Date(transaction.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {new Date(transaction.created_at).toLocaleString('id-ID', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </td>
                         <td style={{ padding: '20px' }}>{petugasName || '-'}</td>
                         <td style={{ padding: '20px', fontWeight: '600' }}>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</td>
@@ -270,11 +282,6 @@ export default function ReportList({
                             {cancelled ? <Ban size={12} /> : <Ticket size={12} />}
                             {cancelled ? 'DIBATALKAN' : 'SELESAI'}
                           </div>
-                          {cancelled && transaction.cancel_reason && (
-                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', maxWidth: '240px', lineHeight: 1.5 }}>
-                              {transaction.cancel_reason}
-                            </div>
-                          )}
                         </td>
                         <td style={{ padding: '20px', color: cancelled ? 'var(--text-muted)' : transaction.diskon_nominal > 0 ? '#F87171' : 'var(--text-muted)' }}>
                           {!cancelled && transaction.diskon_nominal > 0 ? `-${formatCurrency(transaction.diskon_nominal)}` : '-'}
@@ -296,7 +303,7 @@ export default function ReportList({
                             <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
                               Sudah batal
                             </span>
-                          ) : (
+                          ) : canCancelTransaction ? (
                             <button
                               type="button"
                               className="report-cancel-btn"
@@ -306,6 +313,10 @@ export default function ReportList({
                               <Ban size={14} />
                               {pendingTransactionId === transaction.id ? 'Memproses...' : 'Batalkan'}
                             </button>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              Hanya lihat
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -325,12 +336,32 @@ export default function ReportList({
                       <td style={{ padding: '20px', color: row.refund > 0 ? '#FCA5A5' : 'var(--text-muted)', fontWeight: '700' }}>
                         {row.refund > 0 ? formatCurrency(row.refund) : '-'}
                       </td>
-                      <td style={{ padding: '20px', color: '#4ade80', fontWeight: '700' }}>{formatCurrency(row.revenue)}</td>
+                      <td style={{ padding: '20px', color: row.expenses > 0 ? '#FBBF24' : 'var(--text-muted)', fontWeight: '700' }}>
+                        {row.expenses > 0 ? formatCurrency(row.expenses) : '-'}
+                      </td>
+                      <td style={{ padding: '20px', color: row.netRevenue < 0 ? '#F87171' : '#4ade80', fontWeight: '700' }}>{formatCurrency(row.netRevenue)}</td>
                     </tr>
                   ))}
             </tbody>
           </table>
         </div>
+
+        {filters.mode === 'rekap' && (
+          <div className="print-only report-print-receipt">
+            <div className="report-receipt-title">Rekap Harian Banyupanas</div>
+            <div className="report-receipt-subtitle">
+              Periode {filters.startDate || 'Awal'} s.d. {filters.endDate || 'Sekarang'}
+            </div>
+            <div className="report-receipt-lines">
+              <div><span>Transaksi Valid</span><strong>{summary.transactionCount - summary.cancelledCount}</strong></div>
+              <div><span>Tiket Valid</span><strong>{summary.tickets}</strong></div>
+              <div><span>Pendapatan Tiket</span><strong>{formatCurrency(summary.revenue)}</strong></div>
+              <div><span>Total Refund</span><strong>{formatCurrency(summary.refund)}</strong></div>
+              <div><span>Total Pengeluaran</span><strong>{formatCurrency(summary.expenses)}</strong></div>
+              <div><span>Saldo Bersih</span><strong>{formatCurrency(summary.netRevenue)}</strong></div>
+            </div>
+          </div>
+        )}
 
         <div className="no-print" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.01)', gap: '16px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
@@ -689,13 +720,49 @@ export default function ReportList({
           gap: 10px;
           flex-wrap: wrap;
         }
+        .print-only {
+          display: none;
+        }
+        .report-print-receipt {
+          padding: 28px 24px;
+          border-top: 1px dashed rgba(0,0,0,0.25);
+        }
+        .report-receipt-title {
+          font-size: 20px;
+          font-weight: 800;
+          text-align: center;
+          margin-bottom: 4px;
+        }
+        .report-receipt-subtitle {
+          text-align: center;
+          font-size: 13px;
+          color: var(--text-muted);
+          margin-bottom: 18px;
+        }
+        .report-receipt-lines {
+          display: grid;
+          gap: 10px;
+        }
+        .report-receipt-lines > div {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          border-bottom: 1px dashed rgba(255,255,255,0.18);
+          padding-bottom: 8px;
+          font-size: 14px;
+        }
 
         @media print {
           .no-print { display: none !important; }
+          .print-only { display: block !important; }
           .sidebar { display: none !important; }
           .main-content { margin: 0 !important; padding: 20px !important; width: 100% !important; background: white !important; }
           .glass-panel { border: none !important; background: white !important; box-shadow: none !important; border-radius: 0 !important; }
           body { background: white !important; color: black !important; }
+          .report-print-receipt { display: block !important; padding: 0 0 18px !important; }
+          .report-receipt-subtitle { color: #4b5563 !important; }
+          .report-receipt-lines > div { border-bottom: 1px dashed #9ca3af !important; }
+          table { display: ${filters.mode === 'rekap' ? 'none' : 'table'} !important; }
           td, th { color: black !important; border-bottom: 1px solid #ddd !important; padding: 12px 8px !important; font-size: 12px !important; }
           th { background: #f9f9f9 !important; }
           .dashboard-container { display: block !important; }

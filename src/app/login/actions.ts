@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { checkAdminAccess } from '@/utils/supabase/check-admin'
+import { checkSupervisorAccess } from '@/utils/supabase/check-admin'
 
 export async function login(formData: FormData) {
   const supabase = await createClient()
@@ -24,7 +24,7 @@ export async function login(formData: FormData) {
     redirect('/login?message=Email atau password salah. Silakan coba lagi.')
   }
 
-  await checkAdminAccess()
+  await checkSupervisorAccess()
 
   revalidatePath('/', 'layout')
   redirect('/')

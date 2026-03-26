@@ -1,11 +1,11 @@
 'use server'
 
 import { createAdminClient } from '@/utils/supabase/admin'
-import { checkAdminAccess } from '@/utils/supabase/check-admin'
+import { checkSuperAdminAccess } from '@/utils/supabase/check-admin'
 import { revalidatePath } from 'next/cache'
 
 export async function addStaff(formData: FormData) {
-  await checkAdminAccess()
+  await checkSuperAdminAccess()
   const adminAuth = createAdminClient()
   
   const email = formData.get('email') as string
@@ -45,7 +45,7 @@ export async function addStaff(formData: FormData) {
 }
 
 export async function deleteStaff(id: string) {
-  await checkAdminAccess()
+  await checkSuperAdminAccess()
   const adminAuth = createAdminClient()
   
   // Deleting auth user will cascade to profile
@@ -59,8 +59,33 @@ export async function deleteStaff(id: string) {
 }
 
 export async function toggleStaffStatus(id: string, currentStatus: boolean) {
-    await checkAdminAccess()
+    await checkSuperAdminAccess()
     const adminAuth = createAdminClient()
     await adminAuth.from('users_profile').update({ is_active: !currentStatus }).eq('id', id)
     revalidatePath('/petugas')
+}
+
+export async function resetStaffPassword(id: string, nextPassword: string) {
+  await checkSuperAdminAccess()
+
+  const password = nextPassword.trim()
+
+  if (!id) {
+    throw new Error('ID petugas tidak ditemukan.')
+  }
+
+  if (password.length < 6) {
+    throw new Error('Password baru minimal 6 karakter.')
+  }
+
+  const adminAuth = createAdminClient()
+  const { error } = await adminAuth.auth.admin.updateUserById(id, {
+    password,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/petugas')
 }

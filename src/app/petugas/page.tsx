@@ -1,4 +1,4 @@
-import { checkAdminAccess } from '@/utils/supabase/check-admin'
+import { checkSuperAdminAccess } from '@/utils/supabase/check-admin'
 import Sidebar from '@/components/sidebar'
 import AddStaffForm from './add-staff-form'
 import PetugasList from './petugas-list'
@@ -6,7 +6,7 @@ import { createClient } from '@/utils/supabase/server'
 import type { StaffMember } from '@/types/admin'
 
 export default async function PetugasPage() {
-  await checkAdminAccess()
+  await checkSuperAdminAccess()
   const supabase = await createClient()
 
   const { data: staff } = await supabase

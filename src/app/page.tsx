@@ -1,10 +1,10 @@
 import { ArrowRight, Calendar, RotateCcw, Sparkles, Ticket, TrendingUp, Users } from 'lucide-react'
-import { checkAdminAccess } from '@/utils/supabase/check-admin'
+import { checkSupervisorAccess } from '@/utils/supabase/check-admin'
 import Sidebar from '@/components/sidebar'
 import { createClient } from '@/utils/supabase/server'
 
 export default async function Dashboard() {
-  await checkAdminAccess()
+  await checkSupervisorAccess()
   const supabase = await createClient()
 
   const today = new Date()
@@ -122,7 +122,7 @@ export default async function Dashboard() {
           <article className="glass-panel stat-card">
             <div className="stat-top">
               <div>
-                <div className="stat-label">Pendapatan Bersih</div>
+                <div className="stat-label">Pendapatan Bersih Hari Ini</div>
                 <div className="stat-value">Rp {totalRevenue.toLocaleString('id-ID')}</div>
               </div>
               <div className="stat-icon">

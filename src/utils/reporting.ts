@@ -42,6 +42,8 @@ export function summarizeTransactions(transactions: ReportTransaction[]): Report
       tickets: accumulator.tickets + (cancelled ? 0 : (transaction.total_tiket ?? 0)),
       discount: accumulator.discount + (cancelled ? 0 : (transaction.diskon_nominal ?? 0)),
       refund: accumulator.refund + getTransactionRefund(transaction),
+      expenses: accumulator.expenses,
+      netRevenue: accumulator.netRevenue + (cancelled ? 0 : (transaction.total_bayar ?? 0)),
       cancelledCount: accumulator.cancelledCount + (cancelled ? 1 : 0),
       transactionCount: accumulator.transactionCount + 1,
     }
@@ -50,6 +52,8 @@ export function summarizeTransactions(transactions: ReportTransaction[]): Report
     tickets: 0,
     discount: 0,
     refund: 0,
+    expenses: 0,
+    netRevenue: 0,
     cancelledCount: 0,
     transactionCount: 0,
   })
@@ -70,6 +74,7 @@ export function groupTransactionsByDate(transactions: ReportTransaction[]): Dail
       existing.discount += cancelled ? 0 : (transaction.diskon_nominal ?? 0)
       existing.refund += refund
       existing.revenue += cancelled ? 0 : (transaction.total_bayar ?? 0)
+      existing.netRevenue += cancelled ? 0 : (transaction.total_bayar ?? 0)
       return map
     }
 
@@ -86,6 +91,8 @@ export function groupTransactionsByDate(transactions: ReportTransaction[]): Dail
       tickets: cancelled ? 0 : (transaction.total_tiket ?? 0),
       discount: cancelled ? 0 : (transaction.diskon_nominal ?? 0),
       refund,
+      expenses: 0,
+      netRevenue: cancelled ? 0 : (transaction.total_bayar ?? 0),
       revenue: cancelled ? 0 : (transaction.total_bayar ?? 0),
     })
 
