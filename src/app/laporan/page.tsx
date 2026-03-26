@@ -27,6 +27,16 @@ function applyDateFilters<T extends {
   return nextQuery
 }
 
+function applyStatusFilter<T extends {
+  eq: (column: string, value: string) => T
+}>(query: T, filters: ReportFilters) {
+  if (filters.status === 'semua') {
+    return query
+  }
+
+  return query.eq('status_transaksi', filters.status)
+}
+
 export default async function LaporanPage({ searchParams }: PageProps) {
   await checkAdminAccess()
   const supabase = await createClient()
@@ -50,11 +60,16 @@ export default async function LaporanPage({ searchParams }: PageProps) {
         total_tiket,
         diskon_nominal,
         metode_bayar,
-        users_profile!inner (nama_lengkap)
+        status_transaksi,
+        refund_nominal,
+        cancel_reason,
+        cancelled_at,
+        users_profile!transaksi_petugas_id_fkey (nama_lengkap)
       `)
       .order('created_at', { ascending: false })
 
     searchQuery = applyDateFilters(searchQuery, filters)
+    searchQuery = applyStatusFilter(searchQuery, filters)
 
     const { data: rows } = await searchQuery
     const filteredRows = filterTransactionsBySearch((rows ?? []) as ReportTransaction[], filters.searchTerm)
@@ -73,6 +88,7 @@ export default async function LaporanPage({ searchParams }: PageProps) {
   } else {
     let countQuery = supabase.from('transaksi').select('id', { count: 'exact', head: true })
     countQuery = applyDateFilters(countQuery, filters)
+    countQuery = applyStatusFilter(countQuery, filters)
 
     const { count } = await countQuery
     totalItems = count ?? 0
@@ -80,8 +96,9 @@ export default async function LaporanPage({ searchParams }: PageProps) {
 
     let summaryQuery = supabase
       .from('transaksi')
-      .select('total_bayar, total_tiket, diskon_nominal')
+      .select('total_bayar, total_tiket, diskon_nominal, status_transaksi, refund_nominal, cancel_reason, cancelled_at')
     summaryQuery = applyDateFilters(summaryQuery, filters)
+    summaryQuery = applyStatusFilter(summaryQuery, filters)
 
     const { data: summaryRows } = await summaryQuery
     summary = summarizeTransactions((summaryRows ?? []) as ReportTransaction[])
@@ -95,12 +112,17 @@ export default async function LaporanPage({ searchParams }: PageProps) {
         total_tiket,
         diskon_nominal,
         metode_bayar,
-        users_profile!inner (nama_lengkap)
+        status_transaksi,
+        refund_nominal,
+        cancel_reason,
+        cancelled_at,
+        users_profile!transaksi_petugas_id_fkey (nama_lengkap)
       `)
       .order('created_at', { ascending: false })
       .range(from, to)
 
     reportQuery = applyDateFilters(reportQuery, filters)
+    reportQuery = applyStatusFilter(reportQuery, filters)
 
     const { data: rows } = await reportQuery
     transactions = (rows ?? []) as ReportTransaction[]

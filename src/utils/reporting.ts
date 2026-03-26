@@ -21,15 +21,37 @@ export function filterTransactionsBySearch(transactions: ReportTransaction[], se
   })
 }
 
+export function isCancelledTransaction(transaction: ReportTransaction) {
+  return transaction.status_transaksi === 'dibatalkan'
+}
+
+export function getTransactionRefund(transaction: ReportTransaction) {
+  if (!isCancelledTransaction(transaction)) {
+    return 0
+  }
+
+  return transaction.refund_nominal ?? transaction.total_bayar ?? 0
+}
+
 export function summarizeTransactions(transactions: ReportTransaction[]): ReportSummary {
-  return transactions.reduce<ReportSummary>((accumulator, transaction) => ({
-    revenue: accumulator.revenue + (transaction.total_bayar ?? 0),
-    tickets: accumulator.tickets + (transaction.total_tiket ?? 0),
-    discount: accumulator.discount + (transaction.diskon_nominal ?? 0),
-  }), {
+  return transactions.reduce<ReportSummary>((accumulator, transaction) => {
+    const cancelled = isCancelledTransaction(transaction)
+
+    return {
+      revenue: accumulator.revenue + (cancelled ? 0 : (transaction.total_bayar ?? 0)),
+      tickets: accumulator.tickets + (cancelled ? 0 : (transaction.total_tiket ?? 0)),
+      discount: accumulator.discount + (cancelled ? 0 : (transaction.diskon_nominal ?? 0)),
+      refund: accumulator.refund + getTransactionRefund(transaction),
+      cancelledCount: accumulator.cancelledCount + (cancelled ? 1 : 0),
+      transactionCount: accumulator.transactionCount + 1,
+    }
+  }, {
     revenue: 0,
     tickets: 0,
     discount: 0,
+    refund: 0,
+    cancelledCount: 0,
+    transactionCount: 0,
   })
 }
 
@@ -38,12 +60,16 @@ export function groupTransactionsByDate(transactions: ReportTransaction[]): Dail
     const date = new Date(transaction.created_at)
     const dateKey = date.toISOString().split('T')[0]
     const existing = map.get(dateKey)
+    const cancelled = isCancelledTransaction(transaction)
+    const refund = getTransactionRefund(transaction)
 
     if (existing) {
       existing.transactionCount += 1
-      existing.tickets += transaction.total_tiket ?? 0
-      existing.discount += transaction.diskon_nominal ?? 0
-      existing.revenue += transaction.total_bayar ?? 0
+      existing.cancelledCount += cancelled ? 1 : 0
+      existing.tickets += cancelled ? 0 : (transaction.total_tiket ?? 0)
+      existing.discount += cancelled ? 0 : (transaction.diskon_nominal ?? 0)
+      existing.refund += refund
+      existing.revenue += cancelled ? 0 : (transaction.total_bayar ?? 0)
       return map
     }
 
@@ -56,9 +82,11 @@ export function groupTransactionsByDate(transactions: ReportTransaction[]): Dail
         year: 'numeric',
       }),
       transactionCount: 1,
-      tickets: transaction.total_tiket ?? 0,
-      discount: transaction.diskon_nominal ?? 0,
-      revenue: transaction.total_bayar ?? 0,
+      cancelledCount: cancelled ? 1 : 0,
+      tickets: cancelled ? 0 : (transaction.total_tiket ?? 0),
+      discount: cancelled ? 0 : (transaction.diskon_nominal ?? 0),
+      refund,
+      revenue: cancelled ? 0 : (transaction.total_bayar ?? 0),
     })
 
     return map

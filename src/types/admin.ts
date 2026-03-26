@@ -9,6 +9,8 @@ export type TransactionProfile = {
   nama_lengkap: string
 }
 
+export type TransactionStatus = 'selesai' | 'dibatalkan'
+
 export type ReportTransaction = {
   id: string
   created_at: string
@@ -16,6 +18,10 @@ export type ReportTransaction = {
   total_tiket: number
   diskon_nominal: number
   metode_bayar: string
+  status_transaksi: TransactionStatus
+  refund_nominal: number
+  cancel_reason: string | null
+  cancelled_at: string | null
   users_profile: TransactionProfile | TransactionProfile[] | null
 }
 
@@ -25,19 +31,25 @@ export type ReportFilters = {
   searchTerm: string
   startDate: string
   endDate: string
+  status: 'semua' | TransactionStatus
 }
 
 export type ReportSummary = {
   revenue: number
   tickets: number
   discount: number
+  refund: number
+  cancelledCount: number
+  transactionCount: number
 }
 
 export type DailyReportRow = {
   dateKey: string
   label: string
   transactionCount: number
+  cancelledCount: number
   tickets: number
   discount: number
+  refund: number
   revenue: number
 }

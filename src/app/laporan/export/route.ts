@@ -103,6 +103,16 @@ function applyDateFilters<T extends {
   return nextQuery
 }
 
+function applyStatusFilter<T extends {
+  eq: (column: string, value: string) => T
+}>(query: T, filters: ReportFilters) {
+  if (filters.status === 'semua') {
+    return query
+  }
+
+  return query.eq('status_transaksi', filters.status)
+}
+
 export async function GET(request: Request) {
   const { supabase, denied } = await validateAdmin(request.url)
 
@@ -121,11 +131,16 @@ export async function GET(request: Request) {
       total_tiket,
       diskon_nominal,
       metode_bayar,
-      users_profile!inner (nama_lengkap)
+      status_transaksi,
+      refund_nominal,
+      cancel_reason,
+      cancelled_at,
+      users_profile!transaksi_petugas_id_fkey (nama_lengkap)
     `)
     .order('created_at', { ascending: false })
 
   query = applyDateFilters(query, filters)
+  query = applyStatusFilter(query, filters)
 
   const { data: rows } = await query
   const transactions = filterTransactionsBySearch((rows ?? []) as ReportTransaction[], filters.searchTerm)
@@ -150,12 +165,14 @@ export async function GET(request: Request) {
 
   if (filters.mode === 'rekap') {
     worksheetRows.push(
-      ['Tanggal', 'Jumlah Transaksi', 'Tiket', 'Diskon', 'Pendapatan'],
+      ['Tanggal', 'Jumlah Transaksi', 'Dibatalkan', 'Tiket Valid', 'Diskon', 'Refund', 'Pendapatan Bersih'],
       ...recapRows.map((row: DailyReportRow) => [
         row.label,
         row.transactionCount,
+        row.cancelledCount,
         row.tickets,
         row.discount,
+        row.refund,
         row.revenue,
       ])
     )
@@ -163,22 +180,27 @@ export async function GET(request: Request) {
     columnWidths = [
       { wch: 24 },
       { wch: 18 },
+      { wch: 14 },
       { wch: 12 },
+      { wch: 14 },
       { wch: 14 },
       { wch: 18 },
     ]
   } else {
     worksheetRows.push(
-      ['ID Transaksi', 'Waktu', 'Petugas', 'Jumlah Tiket', 'Subtotal', 'Diskon', 'Total Bayar', 'Metode'],
+      ['ID Transaksi', 'Waktu', 'Petugas', 'Jumlah Tiket', 'Status', 'Subtotal', 'Diskon', 'Total Bayar', 'Refund', 'Metode', 'Alasan Batal'],
       ...transactions.map((transaction) => [
         transaction.id,
         new Date(transaction.created_at).toLocaleString('id-ID'),
         getPetugasName(transaction) || 'Unknown',
         transaction.total_tiket,
+        transaction.status_transaksi.toUpperCase(),
         transaction.total_bayar + (transaction.diskon_nominal || 0),
-        transaction.diskon_nominal || 0,
-        transaction.total_bayar,
+        transaction.status_transaksi === 'dibatalkan' ? 0 : (transaction.diskon_nominal || 0),
+        transaction.status_transaksi === 'dibatalkan' ? 0 : transaction.total_bayar,
+        transaction.status_transaksi === 'dibatalkan' ? (transaction.refund_nominal || transaction.total_bayar || 0) : 0,
         transaction.metode_bayar.toUpperCase(),
+        transaction.cancel_reason || '',
       ])
     )
 
@@ -187,10 +209,13 @@ export async function GET(request: Request) {
       { wch: 24 },
       { wch: 22 },
       { wch: 12 },
+      { wch: 14 },
       { wch: 16 },
       { wch: 14 },
       { wch: 16 },
       { wch: 12 },
+      { wch: 14 },
+      { wch: 28 },
     ]
   }
 
@@ -199,22 +224,24 @@ export async function GET(request: Request) {
     ['Ringkasan'],
     ['Total Pendapatan', summary.revenue],
     ['Total Tiket', summary.tickets],
-    ['Total Diskon', summary.discount]
+    ['Total Diskon', summary.discount],
+    ['Total Refund', summary.refund],
+    ['Total Dibatalkan', summary.cancelledCount]
   )
 
   const workbook = XLSX.utils.book_new()
   const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows)
   worksheet['!cols'] = columnWidths
-  worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: filters.mode === 'rekap' ? 4 : 7 } }]
+  worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: filters.mode === 'rekap' ? 6 : 10 } }]
 
   if (filters.mode === 'rekap') {
-    applyNumberFormat(worksheet, 5, 4 + recapRows.length, [1, 2, 3, 4])
-    applyNumberFormat(worksheet, 8 + recapRows.length, 10 + recapRows.length, [1])
-    applyWorksheetLayout(worksheet, 4, 4 + recapRows.length, 4)
+    applyNumberFormat(worksheet, 5, 4 + recapRows.length, [1, 2, 3, 4, 5, 6])
+    applyNumberFormat(worksheet, 8 + recapRows.length, 12 + recapRows.length, [1])
+    applyWorksheetLayout(worksheet, 4, 4 + recapRows.length, 6)
   } else {
-    applyNumberFormat(worksheet, 5, 4 + transactions.length, [3, 4, 5, 6])
-    applyNumberFormat(worksheet, 8 + transactions.length, 10 + transactions.length, [1])
-    applyWorksheetLayout(worksheet, 4, 4 + transactions.length, 7)
+    applyNumberFormat(worksheet, 5, 4 + transactions.length, [3, 5, 6, 7, 8])
+    applyNumberFormat(worksheet, 8 + transactions.length, 12 + transactions.length, [1])
+    applyWorksheetLayout(worksheet, 4, 4 + transactions.length, 10)
   }
 
   XLSX.utils.book_append_sheet(workbook, worksheet, filters.mode === 'rekap' ? 'Rekap Harian' : 'Detail')

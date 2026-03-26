@@ -1,4 +1,4 @@
-import { ArrowRight, Calendar, Sparkles, Ticket, TrendingUp, Users } from 'lucide-react'
+import { ArrowRight, Calendar, RotateCcw, Sparkles, Ticket, TrendingUp, Users } from 'lucide-react'
 import { checkAdminAccess } from '@/utils/supabase/check-admin'
 import Sidebar from '@/components/sidebar'
 import { createClient } from '@/utils/supabase/server'
@@ -13,7 +13,7 @@ export default async function Dashboard() {
 
   const { data: transactions } = await supabase
     .from('transaksi')
-    .select('total_bayar, total_tiket')
+    .select('total_bayar, total_tiket, status_transaksi, refund_nominal')
     .gte('created_at', todayIso)
 
   const { count: activeStaffCount } = await supabase
@@ -22,8 +22,17 @@ export default async function Dashboard() {
     .eq('role', 'petugas')
     .eq('is_active', true)
 
-  const totalRevenue = transactions?.reduce((sum, transaction) => sum + (transaction.total_bayar || 0), 0) || 0
-  const totalTickets = transactions?.reduce((sum, transaction) => sum + (transaction.total_tiket || 0), 0) || 0
+  const totalRevenue = transactions?.reduce((sum, transaction) => (
+    transaction.status_transaksi === 'dibatalkan' ? sum : sum + (transaction.total_bayar || 0)
+  ), 0) || 0
+  const totalTickets = transactions?.reduce((sum, transaction) => (
+    transaction.status_transaksi === 'dibatalkan' ? sum : sum + (transaction.total_tiket || 0)
+  ), 0) || 0
+  const totalRefund = transactions?.reduce((sum, transaction) => (
+    transaction.status_transaksi === 'dibatalkan'
+      ? sum + (transaction.refund_nominal || transaction.total_bayar || 0)
+      : sum
+  ), 0) || 0
   const transactionCount = transactions?.length || 0
 
   return (
@@ -113,7 +122,7 @@ export default async function Dashboard() {
           <article className="glass-panel stat-card">
             <div className="stat-top">
               <div>
-                <div className="stat-label">Total Pendapatan</div>
+                <div className="stat-label">Pendapatan Bersih</div>
                 <div className="stat-value">Rp {totalRevenue.toLocaleString('id-ID')}</div>
               </div>
               <div className="stat-icon">
@@ -122,7 +131,7 @@ export default async function Dashboard() {
             </div>
             <div className="stat-foot">
               <Sparkles size={14} color="#6ee7b7" />
-              Ringkasan pemasukan dari seluruh transaksi hari ini
+              Tidak menghitung transaksi yang sudah dibatalkan
             </div>
           </article>
 
@@ -155,6 +164,22 @@ export default async function Dashboard() {
             <div className="stat-foot">
               <Users size={14} color="#93c5fd" />
               Jumlah akun petugas aktif yang siap dipakai operasional
+            </div>
+          </article>
+
+          <article className="glass-panel stat-card">
+            <div className="stat-top">
+              <div>
+                <div className="stat-label">Refund Hari Ini</div>
+                <div className="stat-value">Rp {totalRefund.toLocaleString('id-ID')}</div>
+              </div>
+              <div className="stat-icon">
+                <RotateCcw size={24} color="#f87171" />
+              </div>
+            </div>
+            <div className="stat-foot">
+              <RotateCcw size={14} color="#fca5a5" />
+              Total pengembalian dari transaksi yang dibatalkan
             </div>
           </article>
         </section>

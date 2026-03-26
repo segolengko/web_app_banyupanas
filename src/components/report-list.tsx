@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo } from 'react'
-import { Calendar, Download, Printer, Filter, Search, ChevronLeft, ChevronRight, Hash, User, Ticket, CreditCard, Banknote, TrendingDown, RotateCcw, Rows3, CalendarDays } from 'lucide-react'
+import { FormEvent, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { Calendar, Download, Printer, Filter, Search, ChevronLeft, ChevronRight, Hash, User, Ticket, CreditCard, Banknote, RotateCcw, Rows3, CalendarDays, Ban, CircleDollarSign } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } from '@/types/admin'
+import { cancelTransactionAction } from '@/app/laporan/actions'
 import { createReportSearchParams } from '@/utils/report-params'
-import { formatCurrency, getPetugasName } from '@/utils/reporting'
+import { formatCurrency, getPetugasName, getTransactionRefund, isCancelledTransaction } from '@/utils/reporting'
 
 type ReportListProps = {
   detailData: ReportTransaction[]
@@ -25,6 +27,12 @@ export default function ReportList({
   totalItems,
   totalPages,
 }: ReportListProps) {
+  const router = useRouter()
+  const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<ReportTransaction | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
   const printReport = () => window.print()
 
   const exportHref = useMemo(() => {
@@ -74,6 +82,61 @@ export default function ReportList({
 
   const visibleCount = filters.mode === 'rekap' ? recapData.length : detailData.length
 
+  const openCancelDialog = (transaction: ReportTransaction) => {
+    if (isCancelledTransaction(transaction)) {
+      return
+    }
+
+    setCancelTarget(transaction)
+    setCancelReason('Pengunjung batal masuk dan uang dikembalikan.')
+    setCancelError(null)
+  }
+
+  const closeCancelDialog = () => {
+    if (pendingTransactionId) {
+      return
+    }
+
+    setCancelTarget(null)
+    setCancelReason('')
+    setCancelError(null)
+  }
+
+  const submitCancelDialog = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!cancelTarget) {
+      return
+    }
+
+    const trimmedReason = cancelReason.trim()
+
+    if (!trimmedReason) {
+      setCancelError('Alasan pembatalan wajib diisi.')
+      return
+    }
+
+    setCancelError(null)
+    setPendingTransactionId(cancelTarget.id)
+
+    startTransition(async () => {
+      const result = await cancelTransactionAction({
+        transactionId: cancelTarget.id,
+        cancelReason: trimmedReason,
+      })
+
+      setPendingTransactionId(null)
+
+      if (result?.error) {
+        setCancelError(result.error)
+        return
+      }
+
+      closeCancelDialog()
+      router.refresh()
+    })
+  }
+
   return (
     <>
       <form
@@ -110,6 +173,14 @@ export default function ReportList({
             <input type="text" name="searchTerm" placeholder="Cari Petugas atau ID..." defaultValue={filters.searchTerm} />
           </div>
           <div className="input-group">
+            <Filter className="input-icon" size={16} />
+            <select name="status" defaultValue={filters.status}>
+              <option value="semua">Semua Status</option>
+              <option value="selesai">Selesai</option>
+              <option value="dibatalkan">Dibatalkan</option>
+            </select>
+          </div>
+          <div className="input-group">
             <Calendar className="input-icon" size={16} />
             <input type="date" name="startDate" defaultValue={filters.startDate} />
           </div>
@@ -130,9 +201,10 @@ export default function ReportList({
       </div>
 
       <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px', marginBottom: '40px' }}>
-        <SummaryCard title="Total Pendapatan" value={formatCurrency(summary.revenue)} icon={<Banknote size={24} />} color="#10B981" />
-        <SummaryCard title="Tiket Terjual" value={`${summary.tickets} Tiket`} icon={<Ticket size={24} />} color="#6366F1" />
-        <SummaryCard title="Total Diskon" value={`-${formatCurrency(summary.discount).replace('Rp ', 'Rp ')}`} icon={<TrendingDown size={24} />} color="#F87171" isNegative />
+        <SummaryCard title="Pendapatan Bersih" value={formatCurrency(summary.revenue)} icon={<Banknote size={24} />} color="#10B981" />
+        <SummaryCard title="Tiket Valid" value={`${summary.tickets} Tiket`} icon={<Ticket size={24} />} color="#6366F1" />
+        <SummaryCard title="Total Refund" value={formatCurrency(summary.refund)} icon={<CircleDollarSign size={24} />} color="#F87171" isNegative={summary.refund > 0} />
+        <SummaryCard title="Transaksi Batal" value={`${summary.cancelledCount} Transaksi`} icon={<Ban size={24} />} color="#F59E0B" />
       </div>
 
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
@@ -145,17 +217,22 @@ export default function ReportList({
                   <th style={{ padding: '20px' }}>Waktu</th>
                   <th style={{ padding: '20px' }}><User size={14} /> Petugas</th>
                   <th style={{ padding: '20px' }}>Jumlah</th>
+                  <th style={{ padding: '20px' }}>Status</th>
                   <th style={{ padding: '20px' }}>Diskon</th>
                   <th style={{ padding: '20px' }}>Total Bayar</th>
+                  <th style={{ padding: '20px' }}>Refund</th>
                   <th className="no-print" style={{ padding: '20px' }}>Metode</th>
+                  <th className="no-print" style={{ padding: '20px' }}>Aksi</th>
                 </tr>
               ) : (
                 <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
                   <th style={{ padding: '20px' }}><Calendar size={14} /> Tanggal</th>
                   <th style={{ padding: '20px' }}>Jumlah Transaksi</th>
-                  <th style={{ padding: '20px' }}>Tiket</th>
+                  <th style={{ padding: '20px' }}>Dibatalkan</th>
+                  <th style={{ padding: '20px' }}>Tiket Valid</th>
                   <th style={{ padding: '20px' }}>Diskon</th>
-                  <th style={{ padding: '20px' }}>Pendapatan</th>
+                  <th style={{ padding: '20px' }}>Refund</th>
+                  <th style={{ padding: '20px' }}>Pendapatan Bersih</th>
                 </tr>
               )}
             </thead>
@@ -163,6 +240,8 @@ export default function ReportList({
               {filters.mode === 'detail'
                 ? detailData.map((transaction) => {
                     const petugasName = getPetugasName(transaction)
+                    const cancelled = isCancelledTransaction(transaction)
+                    const refundAmount = getTransactionRefund(transaction)
 
                     return (
                       <tr key={transaction.id} className="table-row">
@@ -173,18 +252,61 @@ export default function ReportList({
                           {new Date(transaction.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </td>
                         <td style={{ padding: '20px' }}>{petugasName || '-'}</td>
-                        <td style={{ padding: '20px', fontWeight: '600' }}>{transaction.total_tiket} Tiket</td>
-                        <td style={{ padding: '20px', color: transaction.diskon_nominal > 0 ? '#F87171' : 'var(--text-muted)' }}>
-                          {transaction.diskon_nominal > 0 ? `-${formatCurrency(transaction.diskon_nominal)}` : '-'}
+                        <td style={{ padding: '20px', fontWeight: '600' }}>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</td>
+                        <td style={{ padding: '20px' }}>
+                          <div
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 10px',
+                              borderRadius: '999px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              background: cancelled ? 'rgba(248,113,113,0.15)' : 'rgba(74,222,128,0.12)',
+                              color: cancelled ? '#FCA5A5' : '#86EFAC',
+                            }}
+                          >
+                            {cancelled ? <Ban size={12} /> : <Ticket size={12} />}
+                            {cancelled ? 'DIBATALKAN' : 'SELESAI'}
+                          </div>
+                          {cancelled && transaction.cancel_reason && (
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', maxWidth: '240px', lineHeight: 1.5 }}>
+                              {transaction.cancel_reason}
+                            </div>
+                          )}
                         </td>
-                        <td style={{ padding: '20px', color: '#4ade80', fontWeight: '700' }}>
-                          {formatCurrency(transaction.total_bayar)}
+                        <td style={{ padding: '20px', color: cancelled ? 'var(--text-muted)' : transaction.diskon_nominal > 0 ? '#F87171' : 'var(--text-muted)' }}>
+                          {!cancelled && transaction.diskon_nominal > 0 ? `-${formatCurrency(transaction.diskon_nominal)}` : '-'}
+                        </td>
+                        <td style={{ padding: '20px', color: cancelled ? 'var(--text-muted)' : '#4ade80', fontWeight: '700' }}>
+                          {cancelled ? '-' : formatCurrency(transaction.total_bayar)}
+                        </td>
+                        <td style={{ padding: '20px', color: refundAmount > 0 ? '#FCA5A5' : 'var(--text-muted)', fontWeight: '700' }}>
+                          {refundAmount > 0 ? formatCurrency(refundAmount) : '-'}
                         </td>
                         <td className="no-print" style={{ padding: '20px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: '600', color: 'var(--primary-color)' }}>
                             {transaction.metode_bayar === 'tunai' ? <Banknote size={14} /> : <CreditCard size={14} />}
                             {transaction.metode_bayar.toUpperCase()}
                           </div>
+                        </td>
+                        <td className="no-print" style={{ padding: '20px' }}>
+                          {cancelled ? (
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              Sudah batal
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="report-cancel-btn"
+                              disabled={pendingTransactionId === transaction.id}
+                              onClick={() => openCancelDialog(transaction)}
+                            >
+                              <Ban size={14} />
+                              {pendingTransactionId === transaction.id ? 'Memproses...' : 'Batalkan'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -193,9 +315,15 @@ export default function ReportList({
                     <tr key={row.dateKey} className="table-row">
                       <td style={{ padding: '20px', fontWeight: '600' }}>{row.label}</td>
                       <td style={{ padding: '20px' }}>{row.transactionCount} Transaksi</td>
+                      <td style={{ padding: '20px', color: row.cancelledCount > 0 ? '#FCA5A5' : 'var(--text-muted)', fontWeight: '700' }}>
+                        {row.cancelledCount} Transaksi
+                      </td>
                       <td style={{ padding: '20px', fontWeight: '600' }}>{row.tickets} Tiket</td>
                       <td style={{ padding: '20px', color: row.discount > 0 ? '#F87171' : 'var(--text-muted)' }}>
                         {row.discount > 0 ? `-${formatCurrency(row.discount)}` : '-'}
+                      </td>
+                      <td style={{ padding: '20px', color: row.refund > 0 ? '#FCA5A5' : 'var(--text-muted)', fontWeight: '700' }}>
+                        {row.refund > 0 ? formatCurrency(row.refund) : '-'}
                       </td>
                       <td style={{ padding: '20px', color: '#4ade80', fontWeight: '700' }}>{formatCurrency(row.revenue)}</td>
                     </tr>
@@ -246,6 +374,71 @@ export default function ReportList({
         )}
       </div>
 
+      {cancelTarget && (
+        <div className="report-modal-backdrop no-print">
+          <div className="report-modal glass-panel">
+            <div className="report-modal-header">
+              <div>
+                <h3>Batalkan Transaksi</h3>
+                <p>
+                  Transaksi <strong>{cancelTarget.id.substring(0, 8)}...</strong> akan ditandai dibatalkan dan
+                  nominal refund akan masuk ke laporan.
+                </p>
+              </div>
+              <button type="button" className="report-modal-close" onClick={closeCancelDialog} disabled={Boolean(pendingTransactionId)}>
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={submitCancelDialog} className="report-modal-body">
+              <div className="report-modal-summary">
+                <div>
+                  <span>Total Bayar</span>
+                  <strong>{formatCurrency(cancelTarget.total_bayar)}</strong>
+                </div>
+                <div>
+                  <span>Petugas</span>
+                  <strong>{getPetugasName(cancelTarget) || '-'}</strong>
+                </div>
+              </div>
+
+              <label className="report-modal-field">
+                <span>Alasan Pembatalan</span>
+                <textarea
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  placeholder="Contoh: pengunjung batal masuk dan meminta uang kembali."
+                  rows={4}
+                />
+              </label>
+
+              <label className="report-modal-field">
+                <span>Nominal Refund</span>
+                <input
+                  type="text"
+                  value={formatCurrency(cancelTarget.total_bayar)}
+                  readOnly
+                  disabled
+                />
+                <small>Refund otomatis mengikuti total bayar transaksi.</small>
+              </label>
+
+              {cancelError && <div className="report-modal-error">{cancelError}</div>}
+
+              <div className="report-modal-actions">
+                <button type="button" className="export-btn pdf" onClick={closeCancelDialog} disabled={Boolean(pendingTransactionId)}>
+                  Tutup
+                </button>
+                <button type="submit" className="report-cancel-btn" disabled={Boolean(pendingTransactionId)}>
+                  <Ban size={14} />
+                  {pendingTransactionId ? 'Menyimpan...' : 'Konfirmasi Batal'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         .input-group {
           position: relative;
@@ -269,7 +462,24 @@ export default function ReportList({
           font-size: 14px;
           transition: all 0.2s;
         }
+        .input-group select {
+          width: 100%;
+          padding: 12px 14px 12px 42px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          color: white;
+          font-size: 14px;
+          transition: all 0.2s;
+          appearance: none;
+        }
         .input-group input:focus {
+          outline: none;
+          border-color: var(--primary-color);
+          background: rgba(255, 255, 255, 0.07);
+          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        .input-group select:focus {
           outline: none;
           border-color: var(--primary-color);
           background: rgba(255, 255, 255, 0.07);
@@ -340,6 +550,144 @@ export default function ReportList({
           opacity: 0.3;
           cursor: not-allowed;
           pointer-events: none;
+        }
+        .report-cancel-btn {
+          padding: 8px 12px;
+          border-radius: 10px;
+          border: 1px solid rgba(248, 113, 113, 0.35);
+          background: rgba(127, 29, 29, 0.3);
+          color: #fecaca;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s;
+          font-family: inherit;
+        }
+        .report-cancel-btn:hover:enabled {
+          background: rgba(127, 29, 29, 0.45);
+          transform: translateY(-1px);
+        }
+        .report-cancel-btn:disabled {
+          opacity: 0.6;
+          cursor: wait;
+        }
+        .report-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(2, 6, 23, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          z-index: 1000;
+          backdrop-filter: blur(6px);
+        }
+        .report-modal {
+          width: min(100%, 560px);
+          padding: 24px;
+          display: grid;
+          gap: 20px;
+        }
+        .report-modal-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: flex-start;
+        }
+        .report-modal-header h3 {
+          margin: 0 0 6px;
+          font-size: 22px;
+        }
+        .report-modal-header p {
+          margin: 0;
+          color: var(--text-muted);
+          line-height: 1.6;
+        }
+        .report-modal-close {
+          width: 36px;
+          height: 36px;
+          border-radius: 999px;
+          border: 1px solid var(--border-color);
+          background: rgba(255,255,255,0.04);
+          color: white;
+          cursor: pointer;
+          font-size: 24px;
+          line-height: 1;
+        }
+        .report-modal-body {
+          display: grid;
+          gap: 18px;
+        }
+        .report-modal-summary {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px;
+        }
+        .report-modal-summary > div {
+          padding: 14px 16px;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--border-color);
+          display: grid;
+          gap: 6px;
+        }
+        .report-modal-summary span {
+          color: var(--text-muted);
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          font-weight: 700;
+        }
+        .report-modal-summary strong {
+          font-size: 16px;
+        }
+        .report-modal-field {
+          display: grid;
+          gap: 8px;
+        }
+        .report-modal-field span {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--text-soft);
+        }
+        .report-modal-field textarea,
+        .report-modal-field input {
+          width: 100%;
+          padding: 12px 14px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          color: white;
+          font-size: 14px;
+          font-family: inherit;
+        }
+        .report-modal-field textarea:focus,
+        .report-modal-field input:focus {
+          outline: none;
+          border-color: var(--primary-color);
+          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        .report-modal-field small {
+          color: var(--text-muted);
+          font-size: 12px;
+        }
+        .report-modal-error {
+          padding: 12px 14px;
+          border-radius: 12px;
+          background: rgba(127, 29, 29, 0.3);
+          border: 1px solid rgba(248, 113, 113, 0.3);
+          color: #fecaca;
+          font-size: 13px;
+          line-height: 1.6;
+        }
+        .report-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
         }
 
         @media print {

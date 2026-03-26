@@ -23,6 +23,7 @@ function readValue(
 
 export function parseReportFilters(source: URLSearchParams | SearchParamRecord): ReportFilters {
   const pageValue = Number.parseInt(readValue(source, 'page'), 10)
+  const statusValue = readValue(source, 'status')
 
   return {
     page: Number.isFinite(pageValue) && pageValue > 0 ? pageValue : 1,
@@ -30,6 +31,7 @@ export function parseReportFilters(source: URLSearchParams | SearchParamRecord):
     searchTerm: readValue(source, 'searchTerm').trim(),
     startDate: readValue(source, 'startDate'),
     endDate: readValue(source, 'endDate'),
+    status: statusValue === 'selesai' || statusValue === 'dibatalkan' ? statusValue : 'semua',
   }
 }
 
@@ -50,6 +52,10 @@ export function createReportSearchParams(filters: Partial<ReportFilters>) {
 
   if (filters.endDate) {
     params.set('endDate', filters.endDate)
+  }
+
+  if (filters.status && filters.status !== 'semua') {
+    params.set('status', filters.status)
   }
 
   if (filters.page && filters.page > 1) {
