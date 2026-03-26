@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database Notes
+
+- Base schema setup for Banyupanas lives outside this app repo.
+- Ticket-cancellation migration used by the report module is included here:
+  - `supabase_cancel_tiket.sql`
+
 ## Getting Started
 
 First, run the development server:
