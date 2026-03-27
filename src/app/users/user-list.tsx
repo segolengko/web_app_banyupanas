@@ -98,8 +98,8 @@ export default function UserList({ users, currentUserId }: UserListProps) {
   }
 
   return (
-    <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ overflowX: 'auto' }}>
+    <div className="glass-panel users-list-panel" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="users-table-wrap" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: '980px', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
@@ -227,6 +227,75 @@ export default function UserList({ users, currentUserId }: UserListProps) {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="users-mobile-list">
+        {users.length > 0 ? (
+          users.map((user) => (
+            <article key={user.id} className="users-mobile-card">
+              <div className="users-mobile-card-head">
+                <div>
+                  <div className="users-mobile-name">{user.nama_lengkap}</div>
+                  <div className="users-mobile-email">{user.email}</div>
+                  {user.id === currentUserId && (
+                    <div className="users-mobile-current">Akun saat ini</div>
+                  )}
+                </div>
+                <div className={`users-mobile-status ${user.is_active ? 'active' : 'inactive'}`}>
+                  {user.is_active ? 'Aktif' : 'Nonaktif'}
+                </div>
+              </div>
+
+              <div className="users-mobile-field">
+                <span>Role</span>
+                <select
+                  className="role-select"
+                  defaultValue={user.role}
+                  onChange={(event) => handleRoleUpdate(user.id, event.target.value)}
+                  disabled={user.id === currentUserId}
+                >
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="users-mobile-actions">
+                <form action={() => toggleUserStatus(user.id, user.is_active)}>
+                  <button
+                    type="submit"
+                    disabled={user.id === currentUserId && user.is_active}
+                    className="users-mobile-action users-mobile-action-status"
+                    style={{ opacity: user.id === currentUserId && user.is_active ? 0.45 : 1 }}
+                  >
+                    {user.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
+                    {user.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                  </button>
+                </form>
+                <button
+                  onClick={() => openResetModal(user)}
+                  className="users-mobile-action users-mobile-action-reset"
+                >
+                  <KeyRound size={16} />
+                  Reset Password
+                </button>
+                <button
+                  onClick={() => handleDelete(user)}
+                  disabled={user.id === currentUserId}
+                  className="users-mobile-action users-mobile-action-delete"
+                  style={{ opacity: user.id === currentUserId ? 0.45 : 1 }}
+                >
+                  <Trash2 size={16} />
+                  Hapus
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <div className="users-mobile-empty">Belum ada user yang terdaftar.</div>
+        )}
       </div>
 
       {resetTarget && (

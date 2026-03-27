@@ -65,9 +65,10 @@ export default async function TicketsPage() {
             <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>Atur daftar kategori dan harga tiket masuk.</p>
         </header>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 350px', gap: '32px', alignItems: 'start' }}>
+        <div className="tickets-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 350px', gap: '32px', alignItems: 'start' }}>
             {/* List Table */}
-            <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
+            <div className="glass-panel tickets-list-panel" style={{ padding: '0', overflow: 'hidden' }}>
+                <div className="tickets-table-wrap">
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
@@ -167,10 +168,75 @@ export default async function TicketsPage() {
                         )})}
                     </tbody>
                 </table>
+                </div>
+
+                <div className="tickets-mobile-list">
+                  {(categories as TicketCategory[] | null)?.map((cat) => {
+                    const formId = `ticket-category-mobile-${cat.id}`
+
+                    return (
+                      <article key={cat.id} className="tickets-mobile-card">
+                        <div className="tickets-mobile-card-head">
+                          <div>
+                            <div className="tickets-mobile-name">{cat.nama_kategori}</div>
+                            <div className={`tickets-mobile-status ${cat.is_active ? 'active' : 'inactive'}`}>
+                              {cat.is_active ? 'Aktif' : 'Nonaktif'}
+                            </div>
+                          </div>
+                          <div className="tickets-mobile-price">Rp {cat.harga_dasar.toLocaleString('id-ID')}</div>
+                        </div>
+
+                        <form id={formId} action={updateCategory} className="tickets-mobile-form">
+                          <input type="hidden" name="id" value={cat.id} />
+                          <div className="input-group">
+                            <label style={{ fontSize: '13px' }}>Nama Kategori</label>
+                            <input
+                              name="nama"
+                              defaultValue={cat.nama_kategori}
+                              required
+                            />
+                          </div>
+                          <div className="input-group">
+                            <label style={{ fontSize: '13px' }}>Harga Dasar (Rp)</label>
+                            <CurrencyInput
+                              name="harga"
+                              defaultValue={cat.harga_dasar}
+                              required
+                            />
+                          </div>
+                        </form>
+
+                        <div className="tickets-mobile-actions">
+                          <button
+                            type="submit"
+                            form={formId}
+                            className="btn-primary"
+                            style={{ padding: '12px 14px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                          >
+                            <Save size={16} />
+                            Update
+                          </button>
+                          <form action={async () => {
+                            'use server'
+                            await checkAdminAccess()
+                            const supabase = await createClient()
+                            await supabase.from('kategori_tiket').update({ is_active: !cat.is_active }).eq('id', cat.id)
+                            revalidatePath('/tickets')
+                          }}>
+                            <button type="submit" className={`tickets-mobile-toggle ${cat.is_active ? 'inactive' : 'active'}`}>
+                              {cat.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                              {cat.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                            </button>
+                          </form>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
             </div>
 
             {/* Sidebar Form */}
-            <div className="glass-panel" style={{ padding: '28px' }}>
+            <div className="glass-panel tickets-form-panel" style={{ padding: '28px' }}>
                 <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <PencilLine size={20} color="var(--primary-color)" />
                     Tambah atau Koreksi

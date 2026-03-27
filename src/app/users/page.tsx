@@ -25,7 +25,7 @@ export default async function UsersPage() {
           </p>
         </header>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '32px', alignItems: 'start' }}>
+        <div className="users-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '32px', alignItems: 'start' }}>
           <UserList users={(users ?? []) as ManagedUser[]} currentUserId={session.userId} />
           <AddUserForm />
         </div>
