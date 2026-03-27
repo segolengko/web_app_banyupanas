@@ -10,6 +10,17 @@ type CancelTransactionInput = {
   cancelReason: string
 }
 
+function getJakartaDateKey(value: Date | string) {
+  const date = typeof value === 'string' ? new Date(value) : value
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
 export async function cancelTransactionAction(input: CancelTransactionInput) {
   await checkAdminAccess()
 
@@ -35,9 +46,9 @@ export async function cancelTransactionAction(input: CancelTransactionInput) {
 
   const { data: transaction, error: fetchError } = await adminClient
     .from('transaksi')
-    .select('id, total_bayar, status_transaksi')
+    .select('id, total_bayar, status_transaksi, created_at')
     .eq('id', input.transactionId)
-    .single<{ id: string; total_bayar: number; status_transaksi: 'selesai' | 'dibatalkan' }>()
+    .single<{ id: string; total_bayar: number; status_transaksi: 'selesai' | 'dibatalkan'; created_at: string }>()
 
   if (fetchError || !transaction) {
     return { error: 'Transaksi tidak ditemukan.' }
@@ -45,6 +56,10 @@ export async function cancelTransactionAction(input: CancelTransactionInput) {
 
   if (transaction.status_transaksi === 'dibatalkan') {
     return { error: 'Transaksi ini sudah dibatalkan sebelumnya.' }
+  }
+
+  if (getJakartaDateKey(transaction.created_at) !== getJakartaDateKey(new Date())) {
+    return { error: 'Pembatalan hanya boleh dilakukan pada tanggal transaksi yang sama.' }
   }
 
   const { error: updateError } = await adminClient

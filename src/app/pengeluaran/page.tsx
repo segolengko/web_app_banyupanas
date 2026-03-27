@@ -140,9 +140,10 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: '28px', alignItems: 'start' }}>
-          <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="expense-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: '28px', alignItems: 'start' }}>
+          <div className="glass-panel expense-list-panel" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="expense-table-wrap">
+            <table className="expense-desktop-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
                   <th style={{ padding: '18px' }}>Tanggal</th>
@@ -229,10 +230,65 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
                 )}
               </tbody>
             </table>
+            </div>
+
+            <div className="expense-mobile-list">
+              {expenses.map((expense: ExpenseRow) => (
+                <article key={expense.id} className="expense-mobile-card">
+                  <div className="expense-mobile-card-head">
+                    <div>
+                      <div className="expense-mobile-date">{formatDateDisplay(expense.expense_at)}</div>
+                      <div className="expense-mobile-category">{expense.category}</div>
+                    </div>
+                    <div className="expense-mobile-amount">Rp {expense.nominal.toLocaleString('id-ID')}</div>
+                  </div>
+
+                  <div className="expense-mobile-meta">
+                    <span className="expense-mobile-chip">{expense.payment_method.toUpperCase()}</span>
+                    <span className="expense-mobile-desc">{expense.description || 'Tanpa keterangan'}</span>
+                  </div>
+
+                  <div className="expense-mobile-actions">
+                    {canManageExpenses ? (
+                      <>
+                        <a
+                          href={`/pengeluaran?${new URLSearchParams({
+                            ...(startDate ? { startDate } : {}),
+                            ...(endDate ? { endDate } : {}),
+                            ...(category ? { category } : {}),
+                            edit: expense.id,
+                          }).toString()}`}
+                          className="expense-mobile-action expense-mobile-action-edit"
+                        >
+                          Edit
+                        </a>
+                        <form action={deleteExpenseAction}>
+                          <input type="hidden" name="expenseId" value={expense.id} />
+                          <button
+                            type="submit"
+                            className="expense-mobile-action expense-mobile-action-delete"
+                          >
+                            Hapus
+                          </button>
+                        </form>
+                      </>
+                    ) : (
+                      <span className="expense-mobile-view-only">Lihat</span>
+                    )}
+                  </div>
+                </article>
+              ))}
+
+              {expenses.length === 0 && (
+                <div className="expense-mobile-empty">
+                  Belum ada pengeluaran operasional pada filter ini.
+                </div>
+              )}
+            </div>
           </div>
 
           {canManageExpenses && (
-          <div className="glass-panel" style={{ padding: '24px' }}>
+          <div className="glass-panel expense-form-panel" style={{ padding: '24px' }}>
             <h3 style={{ marginTop: 0, marginBottom: '18px' }}>{selectedExpense ? 'Edit Pengeluaran' : 'Tambah Pengeluaran'}</h3>
             <form action={formAction} style={{ display: 'grid', gap: '16px' }}>
               {selectedExpense && <input type="hidden" name="expenseId" value={selectedExpense.id} />}

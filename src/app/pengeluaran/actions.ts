@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { checkAdminAccess } from '@/utils/supabase/check-admin'
 import { createAdminClient } from '@/utils/supabase/admin'
 
@@ -50,6 +51,7 @@ export async function createExpenseAction(formData: FormData) {
   revalidatePath('/pengeluaran')
   revalidatePath('/laporan')
   revalidatePath('/')
+  redirect('/pengeluaran')
 }
 
 export async function deleteExpenseAction(formData: FormData) {
@@ -74,6 +76,7 @@ export async function deleteExpenseAction(formData: FormData) {
   revalidatePath('/pengeluaran')
   revalidatePath('/laporan')
   revalidatePath('/')
+  redirect('/pengeluaran')
 }
 
 export async function updateExpenseAction(formData: FormData) {
@@ -124,4 +127,5 @@ export async function updateExpenseAction(formData: FormData) {
   revalidatePath('/pengeluaran')
   revalidatePath('/laporan')
   revalidatePath('/')
+  redirect('/pengeluaran')
 }

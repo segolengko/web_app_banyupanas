@@ -1,7 +1,8 @@
-import { ArrowRight, Calendar, RotateCcw, Sparkles, Ticket, TrendingUp, Users } from 'lucide-react'
+import { ArrowRight, Calendar, ReceiptText, Sparkles, Tag, Ticket, TrendingUp } from 'lucide-react'
 import { checkSupervisorAccess } from '@/utils/supabase/check-admin'
 import Sidebar from '@/components/sidebar'
 import { createClient } from '@/utils/supabase/server'
+import DashboardRefresh from '@/components/dashboard-refresh'
 
 export default async function Dashboard() {
   await checkSupervisorAccess()
@@ -13,14 +14,13 @@ export default async function Dashboard() {
 
   const { data: transactions } = await supabase
     .from('transaksi')
-    .select('total_bayar, total_tiket, status_transaksi, refund_nominal')
+    .select('total_bayar, total_tiket, status_transaksi, refund_nominal, diskon_nominal')
     .gte('created_at', todayIso)
 
-  const { count: activeStaffCount } = await supabase
-    .from('users_profile')
-    .select('id', { count: 'exact', head: true })
-    .eq('role', 'petugas')
-    .eq('is_active', true)
+  const { data: expenses } = await supabase
+    .from('operational_expenses')
+    .select('nominal')
+    .gte('expense_at', todayIso)
 
   const totalRevenue = transactions?.reduce((sum, transaction) => (
     transaction.status_transaksi === 'dibatalkan' ? sum : sum + (transaction.total_bayar || 0)
@@ -28,11 +28,15 @@ export default async function Dashboard() {
   const totalTickets = transactions?.reduce((sum, transaction) => (
     transaction.status_transaksi === 'dibatalkan' ? sum : sum + (transaction.total_tiket || 0)
   ), 0) || 0
+  const totalDiscount = transactions?.reduce((sum, transaction) => (
+    transaction.status_transaksi === 'dibatalkan' ? sum : sum + (transaction.diskon_nominal || 0)
+  ), 0) || 0
   const totalRefund = transactions?.reduce((sum, transaction) => (
     transaction.status_transaksi === 'dibatalkan'
       ? sum + (transaction.refund_nominal || transaction.total_bayar || 0)
       : sum
   ), 0) || 0
+  const totalExpenses = expenses?.reduce((sum, expense) => sum + (expense.nominal || 0), 0) || 0
   const transactionCount = transactions?.length || 0
 
   return (
@@ -40,65 +44,31 @@ export default async function Dashboard() {
       <Sidebar />
 
       <main className="main-content">
-        <section className="glass-panel hero-panel">
+        <section className="dashboard-refresh-bar">
+          <DashboardRefresh intervalSeconds={90} />
+        </section>
+
+        <section className="glass-panel hero-panel dashboard-hero-section">
           <div>
             <div className="hero-badge">
-              <Sparkles size={15} />
+              <Calendar size={15} />
               Operasional Hari Ini
             </div>
-            <h1 className="hero-title">Panel admin yang lebih segar untuk memantau ritme penjualan Banyupanas.</h1>
+            <h1 className="hero-title">Ringkasan operasional hari ini.</h1>
             <p className="hero-copy">
-              Semua fungsi inti tetap sama, tapi tampilan sekarang dibuat lebih fokus untuk membaca angka penjualan, menjaga akses petugas, dan bergerak cepat saat admin perlu mengambil keputusan.
+              {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
-
-            <div className="hero-grid">
-              <div className="hero-note">
-                <h3>Agenda utama</h3>
-                <p>Pastikan harga tiket tetap akurat, akun petugas aktif, dan laporan selalu siap diekspor kapan pun dibutuhkan.</p>
-              </div>
-              <div className="hero-note">
-                <h3>Tanggal operasional</h3>
-                <p>{new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              </div>
-            </div>
           </div>
 
           <div className="section-grid">
-            <div className="glass-panel" style={{ padding: '22px', borderRadius: '24px', background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.05))' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <div
-                  style={{
-                    width: '46px',
-                    height: '46px',
-                    borderRadius: '16px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(255,255,255,0.12)',
-                  }}
-                >
-                  <Calendar size={20} color="#fde68a" />
-                </div>
-                <div>
-                  <div style={{ color: '#fde68a', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Snapshot
-                  </div>
-                  <div style={{ fontSize: '20px', fontFamily: 'Sora, sans-serif', marginTop: '4px' }}>Hari operasional aktif</div>
-                </div>
-              </div>
-              <p style={{ margin: 0, color: 'var(--text-soft)', lineHeight: 1.7, fontSize: '14px' }}>
-                Pantau overview penjualan hari ini sebelum masuk ke detail laporan atau melakukan pembaruan tiket dan akses petugas.
-              </p>
-            </div>
-
             <div style={{ display: 'grid', gap: '14px' }}>
               <div className="hero-note" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800 }}>
-                    Petugas Aktif
+                    Total Pengeluaran
                   </div>
                   <div style={{ fontSize: '28px', fontFamily: 'Sora, sans-serif', marginTop: '6px' }}>
-                    {(activeStaffCount ?? 0).toLocaleString('id-ID')}
+                    Rp {totalExpenses.toLocaleString('id-ID')}
                   </div>
                 </div>
                 <ArrowRight size={18} color="var(--primary-color)" />
@@ -118,7 +88,7 @@ export default async function Dashboard() {
           </div>
         </section>
 
-        <section className="stat-grid">
+        <section className="stat-grid dashboard-stats-section">
           <article className="glass-panel stat-card">
             <div className="stat-top">
               <div>
@@ -154,37 +124,37 @@ export default async function Dashboard() {
           <article className="glass-panel stat-card">
             <div className="stat-top">
               <div>
-                <div className="stat-label">Petugas Online</div>
-                <div className="stat-value">{(activeStaffCount ?? 0).toLocaleString('id-ID')}</div>
+                <div className="stat-label">Total Diskon Hari Ini</div>
+                <div className="stat-value">Rp {totalDiscount.toLocaleString('id-ID')}</div>
               </div>
               <div className="stat-icon">
-                <Users size={24} color="#93c5fd" />
+                <Tag size={24} color="#93c5fd" />
               </div>
             </div>
             <div className="stat-foot">
-              <Users size={14} color="#93c5fd" />
-              Jumlah akun petugas aktif yang siap dipakai operasional
+              <Tag size={14} color="#93c5fd" />
+              Akumulasi diskon transaksi valid sepanjang hari ini
             </div>
           </article>
 
           <article className="glass-panel stat-card">
             <div className="stat-top">
               <div>
-                <div className="stat-label">Refund Hari Ini</div>
-                <div className="stat-value">Rp {totalRefund.toLocaleString('id-ID')}</div>
+                <div className="stat-label">Total Pengeluaran Hari Ini</div>
+                <div className="stat-value">Rp {totalExpenses.toLocaleString('id-ID')}</div>
               </div>
               <div className="stat-icon">
-                <RotateCcw size={24} color="#f87171" />
+                <ReceiptText size={24} color="#f87171" />
               </div>
             </div>
             <div className="stat-foot">
-              <RotateCcw size={14} color="#fca5a5" />
-              Total pengembalian dari transaksi yang dibatalkan
+              <ReceiptText size={14} color="#fca5a5" />
+              Total biaya operasional yang sudah dicatat untuk hari ini
             </div>
           </article>
         </section>
 
-        <section className="glass-panel" style={{ marginTop: '26px', padding: '30px' }}>
+        <section className="glass-panel dashboard-guidance-section" style={{ marginTop: '26px', padding: '30px' }}>
           <div className="page-header" style={{ marginBottom: '0' }}>
             <div>
               <h1 style={{ fontSize: '28px' }}>Arah kerja admin hari ini</h1>

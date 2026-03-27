@@ -161,12 +161,12 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
           <StatCard title="Saldo Bersih" value={`Rp ${netRevenue.toLocaleString('id-ID')}`} tone={netRevenue < 0 ? 'danger' : 'success'} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '28px', alignItems: 'start' }}>
-          <div className="glass-panel no-print" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="closing-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '28px', alignItems: 'start' }}>
+          <div className="glass-panel no-print closing-history-panel" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '20px 22px', borderBottom: '1px solid var(--border-color)' }}>
               <h3 style={{ margin: 0 }}>Riwayat Closing</h3>
             </div>
-            <div style={{ overflowX: 'auto' }}>
+            <div className="closing-table-wrap" style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', minWidth: '860px', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
@@ -217,9 +217,60 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
                 </tbody>
               </table>
             </div>
+
+            <div className="closing-mobile-list">
+              {closingHistory.length > 0 ? (
+                closingHistory.map((closing) => {
+                  const closedAt = new Date(closing.closed_at)
+
+                  return (
+                    <article key={closing.id} className="closing-mobile-card">
+                      <div className="closing-mobile-card-head">
+                        <div>
+                          <div className="closing-mobile-date">{formatDateDisplay(closing.closing_date)}</div>
+                          <div className="closing-mobile-subtitle">
+                            Ditutup {formatDateDisplay(closing.closed_at)}{' '}
+                            {closedAt.toLocaleTimeString('id-ID', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })} WIB
+                          </div>
+                        </div>
+                        <div className={`closing-mobile-amount ${closing.net_revenue < 0 ? 'danger' : 'success'}`}>
+                          Rp {closing.net_revenue.toLocaleString('id-ID')}
+                        </div>
+                      </div>
+
+                      <div className="closing-mobile-grid">
+                        <div>
+                          <span>Transaksi</span>
+                          <strong>{closing.total_transactions.toLocaleString('id-ID')}</strong>
+                        </div>
+                        <div>
+                          <span>Tiket</span>
+                          <strong>{closing.total_tickets.toLocaleString('id-ID')}</strong>
+                        </div>
+                        <div>
+                          <span>Pendapatan</span>
+                          <strong>Rp {closing.gross_revenue.toLocaleString('id-ID')}</strong>
+                        </div>
+                        <div>
+                          <span>Pengeluaran</span>
+                          <strong>Rp {closing.total_expenses.toLocaleString('id-ID')}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })
+              ) : (
+                <div className="closing-mobile-empty">
+                  Belum ada snapshot closing yang tersimpan.
+                </div>
+              )}
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gap: '20px' }}>
+          <div className="closing-side-panel" style={{ display: 'grid', gap: '20px' }}>
             <section className="glass-panel receipt-print-shell" style={{ padding: '24px' }}>
               <div className="receipt-paper">
                 <div className="receipt-center">

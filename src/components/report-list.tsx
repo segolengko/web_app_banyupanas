@@ -35,7 +35,6 @@ export default function ReportList({
   const [cancelReason, setCancelReason] = useState('')
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [, startTransition] = useTransition()
-  const printReport = () => window.print()
 
   const exportHref = useMemo(() => {
     const params = createReportSearchParams({
@@ -48,6 +47,19 @@ export default function ReportList({
     const query = params.toString()
     return query ? `/laporan/export?${query}` : '/laporan/export'
   }, [filters.endDate, filters.mode, filters.searchTerm, filters.startDate])
+
+  const pdfHref = useMemo(() => {
+    const params = createReportSearchParams({
+      mode: filters.mode,
+      searchTerm: filters.searchTerm,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      status: filters.status,
+    })
+
+    const query = params.toString()
+    return query ? `/laporan/pdf?${query}` : '/laporan/pdf'
+  }, [filters.endDate, filters.mode, filters.searchTerm, filters.startDate, filters.status])
 
   const pageLinks = useMemo(() => {
     if (totalPages <= 1) {
@@ -83,6 +95,17 @@ export default function ReportList({
   }
 
   const visibleCount = filters.mode === 'rekap' ? recapData.length : detailData.length
+
+  const getJakartaDateKey = (value: string | Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(typeof value === 'string' ? new Date(value) : value)
+
+  const canCancelTransactionToday = (transaction: ReportTransaction) =>
+    getJakartaDateKey(transaction.created_at) === getJakartaDateKey(new Date())
 
   const openCancelDialog = (transaction: ReportTransaction) => {
     if (isCancelledTransaction(transaction)) {
@@ -162,9 +185,9 @@ export default function ReportList({
             <Link href={exportHref} className="export-btn excel">
               <Download size={16} /> Excel
             </Link>
-            <button type="button" onClick={printReport} className="export-btn pdf">
+            <Link href={pdfHref} target="_blank" rel="noreferrer" className="export-btn pdf">
               <Printer size={16} /> Cetak PDF
-            </button>
+            </Link>
           </div>
         </div>
 
@@ -213,7 +236,7 @@ export default function ReportList({
       </div>
 
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <div className="report-table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
             <thead>
               {filters.mode === 'detail' ? (
@@ -248,6 +271,7 @@ export default function ReportList({
                     const petugasName = getPetugasName(transaction)
                     const cancelled = isCancelledTransaction(transaction)
                     const refundAmount = getTransactionRefund(transaction)
+                    const canCancelByDate = canCancelTransactionToday(transaction)
 
                     return (
                       <tr key={transaction.id} className="table-row">
@@ -303,7 +327,7 @@ export default function ReportList({
                             <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
                               Sudah batal
                             </span>
-                          ) : canCancelTransaction ? (
+                          ) : canCancelTransaction && canCancelByDate ? (
                             <button
                               type="button"
                               className="report-cancel-btn"
@@ -313,6 +337,10 @@ export default function ReportList({
                               <Ban size={14} />
                               {pendingTransactionId === transaction.id ? 'Memproses...' : 'Batalkan'}
                             </button>
+                          ) : !canCancelByDate ? (
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              Lewat tanggal
+                            </span>
                           ) : (
                             <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
                               Hanya lihat
@@ -346,22 +374,292 @@ export default function ReportList({
           </table>
         </div>
 
-        {filters.mode === 'rekap' && (
-          <div className="print-only report-print-receipt">
-            <div className="report-receipt-title">Rekap Harian Banyupanas</div>
-            <div className="report-receipt-subtitle">
-              Periode {filters.startDate || 'Awal'} s.d. {filters.endDate || 'Sekarang'}
+        <div className="report-mobile-list no-print">
+          {filters.mode === 'detail' ? (
+            detailData.length > 0 ? (
+              detailData.map((transaction) => {
+                const petugasName = getPetugasName(transaction)
+                const cancelled = isCancelledTransaction(transaction)
+                const refundAmount = getTransactionRefund(transaction)
+                const canCancelByDate = canCancelTransactionToday(transaction)
+
+                return (
+                  <article key={transaction.id} className="report-mobile-card">
+                    <div className="report-mobile-card-head">
+                      <div>
+                        <div className="report-mobile-id">
+                          ID {transaction.id.substring(0, 8)}...
+                        </div>
+                        <div className="report-mobile-time">
+                          {new Date(transaction.created_at).toLocaleString('id-ID', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </div>
+                      <div
+                        className={`report-mobile-status ${cancelled ? 'cancelled' : 'done'}`}
+                      >
+                        {cancelled ? 'DIBATALKAN' : 'SELESAI'}
+                      </div>
+                    </div>
+
+                    <div className="report-mobile-grid">
+                      <div>
+                        <span>Petugas</span>
+                        <strong>{petugasName || '-'}</strong>
+                      </div>
+                      <div>
+                        <span>Jumlah</span>
+                        <strong>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</strong>
+                      </div>
+                      <div>
+                        <span>Diskon</span>
+                        <strong>
+                          {!cancelled && transaction.diskon_nominal > 0
+                            ? `-${formatCurrency(transaction.diskon_nominal)}`
+                            : '-'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Total Bayar</span>
+                        <strong>{cancelled ? '-' : formatCurrency(transaction.total_bayar)}</strong>
+                      </div>
+                      <div>
+                        <span>Refund</span>
+                        <strong>{refundAmount > 0 ? formatCurrency(refundAmount) : '-'}</strong>
+                      </div>
+                      <div>
+                        <span>Metode</span>
+                        <strong>{transaction.metode_bayar.toUpperCase()}</strong>
+                      </div>
+                    </div>
+
+                    <div className="report-mobile-actions">
+                      {cancelled ? (
+                        <span className="report-mobile-muted">Sudah batal</span>
+                      ) : canCancelTransaction && canCancelByDate ? (
+                        <button
+                          type="button"
+                          className="report-cancel-btn"
+                          disabled={pendingTransactionId === transaction.id}
+                          onClick={() => openCancelDialog(transaction)}
+                        >
+                          <Ban size={14} />
+                          {pendingTransactionId === transaction.id ? 'Memproses...' : 'Batalkan'}
+                        </button>
+                      ) : !canCancelByDate ? (
+                        <span className="report-mobile-muted">Lewat tanggal</span>
+                      ) : (
+                        <span className="report-mobile-muted">Hanya lihat</span>
+                      )}
+                    </div>
+                  </article>
+                )
+              })
+            ) : null
+          ) : recapData.length > 0 ? (
+            recapData.map((row) => (
+              <article key={row.dateKey} className="report-mobile-card">
+                <div className="report-mobile-card-head">
+                  <div>
+                    <div className="report-mobile-id">Tanggal</div>
+                    <div className="report-mobile-time">{row.label}</div>
+                  </div>
+                  <div className="report-mobile-status done">
+                    {row.transactionCount} Transaksi
+                  </div>
+                </div>
+
+                <div className="report-mobile-grid">
+                  <div>
+                    <span>Dibatalkan</span>
+                    <strong>{row.cancelledCount} Transaksi</strong>
+                  </div>
+                  <div>
+                    <span>Tiket Valid</span>
+                    <strong>{row.tickets} Tiket</strong>
+                  </div>
+                  <div>
+                    <span>Diskon</span>
+                    <strong>{row.discount > 0 ? `-${formatCurrency(row.discount)}` : '-'}</strong>
+                  </div>
+                  <div>
+                    <span>Refund</span>
+                    <strong>{row.refund > 0 ? formatCurrency(row.refund) : '-'}</strong>
+                  </div>
+                  <div>
+                    <span>Pengeluaran</span>
+                    <strong>{row.expenses > 0 ? formatCurrency(row.expenses) : '-'}</strong>
+                  </div>
+                  <div>
+                    <span>Saldo Bersih</span>
+                    <strong>{formatCurrency(row.netRevenue)}</strong>
+                  </div>
+                </div>
+              </article>
+            ))
+          ) : null}
+        </div>
+
+        <div className="print-only report-print-document">
+          <div className="report-print-header">
+            <div className="report-print-title">Laporan Transaksi Banyupanas</div>
+            <div className="report-print-subtitle">
+              {filters.mode === 'detail' ? 'Laporan Detail' : 'Rekap Harian'}
             </div>
-            <div className="report-receipt-lines">
-              <div><span>Transaksi Valid</span><strong>{summary.transactionCount - summary.cancelledCount}</strong></div>
-              <div><span>Tiket Valid</span><strong>{summary.tickets}</strong></div>
-              <div><span>Pendapatan Tiket</span><strong>{formatCurrency(summary.revenue)}</strong></div>
-              <div><span>Total Refund</span><strong>{formatCurrency(summary.refund)}</strong></div>
-              <div><span>Total Pengeluaran</span><strong>{formatCurrency(summary.expenses)}</strong></div>
-              <div><span>Saldo Bersih</span><strong>{formatCurrency(summary.netRevenue)}</strong></div>
+            <div className="report-print-meta-list">
+              <div className="report-print-meta-row">
+                <span>Periode</span>
+                <strong>{filters.startDate || 'Awal'} s.d. {filters.endDate || 'Sekarang'}</strong>
+              </div>
+              <div className="report-print-meta-row">
+                <span>Status</span>
+                <strong>{filters.status === 'semua' ? 'Semua Status' : filters.status.toUpperCase()}</strong>
+              </div>
+              <div className="report-print-meta-row">
+                <span>Pencarian</span>
+                <strong>{filters.searchTerm || '-'}</strong>
+              </div>
+              <div className="report-print-meta-row">
+                <span>Dicetak</span>
+                <strong>
+                  {new Date().toLocaleString('id-ID', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </strong>
+              </div>
             </div>
           </div>
-        )}
+
+          <div className="report-print-summary-list">
+            <div className="report-print-summary-row">
+              <span>Pendapatan Tiket Bersih</span>
+              <strong>{formatCurrency(summary.revenue)}</strong>
+            </div>
+            <div className="report-print-summary-row">
+              <span>Tiket Valid</span>
+              <strong>{summary.tickets} Tiket</strong>
+            </div>
+            <div className="report-print-summary-row">
+              <span>Total Diskon</span>
+              <strong>{formatCurrency(summary.discount)}</strong>
+            </div>
+            <div className="report-print-summary-row">
+              <span>Total Refund</span>
+              <strong>{formatCurrency(summary.refund)}</strong>
+            </div>
+            <div className="report-print-summary-row">
+              <span>Total Pengeluaran</span>
+              <strong>{formatCurrency(summary.expenses)}</strong>
+            </div>
+            <div className="report-print-summary-row">
+              <span>Saldo Bersih</span>
+              <strong>{formatCurrency(summary.netRevenue)}</strong>
+            </div>
+          </div>
+
+          {filters.mode === 'detail' ? (
+            <div className="report-print-entry-list">
+              {detailData.map((transaction) => {
+                const petugasName = getPetugasName(transaction)
+                const cancelled = isCancelledTransaction(transaction)
+                const refundAmount = getTransactionRefund(transaction)
+
+                return (
+                  <section key={transaction.id} className="report-print-entry">
+                    <div className="report-print-entry-head">
+                      <div>
+                        <div className="report-print-entry-id">ID {transaction.id.substring(0, 8)}...</div>
+                        <div className="report-print-entry-time">
+                          {new Date(transaction.created_at).toLocaleString('id-ID', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </div>
+                      <div className={`report-print-entry-status ${cancelled ? 'cancelled' : 'done'}`}>
+                        {cancelled ? 'DIBATALKAN' : 'SELESAI'}
+                      </div>
+                    </div>
+
+                    <div className="report-print-entry-grid">
+                      <div className="report-print-entry-row">
+                        <span>Petugas</span>
+                        <strong>{petugasName || '-'}</strong>
+                      </div>
+                      <div className="report-print-entry-row">
+                        <span>Jumlah</span>
+                        <strong>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</strong>
+                      </div>
+                      <div className="report-print-entry-row">
+                        <span>Metode</span>
+                        <strong>{transaction.metode_bayar.toUpperCase()}</strong>
+                      </div>
+                      <div className="report-print-entry-row">
+                        <span>Diskon</span>
+                        <strong>
+                          {!cancelled && transaction.diskon_nominal > 0
+                            ? `-${formatCurrency(transaction.diskon_nominal)}`
+                            : '-'}
+                        </strong>
+                      </div>
+                      <div className="report-print-entry-row">
+                        <span>Total Bayar</span>
+                        <strong>{cancelled ? '-' : formatCurrency(transaction.total_bayar)}</strong>
+                      </div>
+                      <div className="report-print-entry-row">
+                        <span>Refund</span>
+                        <strong>{refundAmount > 0 ? formatCurrency(refundAmount) : '-'}</strong>
+                      </div>
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="report-print-table-wrap">
+              <table className="report-print-table">
+                <thead>
+                  <tr>
+                    <th>Tanggal</th>
+                    <th>Transaksi</th>
+                    <th>Dibatalkan</th>
+                    <th>Tiket Valid</th>
+                    <th>Diskon</th>
+                    <th>Refund</th>
+                    <th>Pengeluaran</th>
+                    <th>Saldo Bersih</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recapData.map((row) => (
+                    <tr key={row.dateKey}>
+                      <td>{row.label}</td>
+                      <td>{row.transactionCount} Transaksi</td>
+                      <td>{row.cancelledCount} Transaksi</td>
+                      <td>{row.tickets} Tiket</td>
+                      <td>{row.discount > 0 ? `-${formatCurrency(row.discount)}` : '-'}</td>
+                      <td>{row.refund > 0 ? formatCurrency(row.refund) : '-'}</td>
+                      <td>{row.expenses > 0 ? formatCurrency(row.expenses) : '-'}</td>
+                      <td>{formatCurrency(row.netRevenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         <div className="no-print" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.01)', gap: '16px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
@@ -554,6 +852,9 @@ export default function ReportList({
         .table-row:hover {
           background: rgba(255,255,255,0.02);
         }
+        .report-mobile-list {
+          display: none;
+        }
         .pagination-btn {
           width: 36px;
           height: 36px;
@@ -723,33 +1024,169 @@ export default function ReportList({
         .print-only {
           display: none;
         }
-        .report-print-receipt {
-          padding: 28px 24px;
-          border-top: 1px dashed rgba(0,0,0,0.25);
+        .report-print-document {
+          display: none;
+          padding: 28px 24px 32px;
+          color: #111827;
+          background: white;
         }
-        .report-receipt-title {
-          font-size: 20px;
-          font-weight: 800;
-          text-align: center;
-          margin-bottom: 4px;
-        }
-        .report-receipt-subtitle {
-          text-align: center;
-          font-size: 13px;
-          color: var(--text-muted);
+        .report-print-header {
+          display: block;
           margin-bottom: 18px;
         }
-        .report-receipt-lines {
-          display: grid;
-          gap: 10px;
+        .report-print-title {
+          font-size: 24px;
+          font-weight: 800;
+          text-align: center;
         }
-        .report-receipt-lines > div {
+        .report-print-subtitle {
+          text-align: center;
+          font-size: 14px;
+          color: #4b5563;
+          font-weight: 700;
+          margin-top: 4px;
+        }
+        .report-print-meta-list {
+          display: block;
+          margin-top: 16px;
+          border: 1px solid #d1d5db;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        .report-print-meta-row {
           display: flex;
           justify-content: space-between;
           gap: 16px;
-          border-bottom: 1px dashed rgba(255,255,255,0.18);
-          padding-bottom: 8px;
-          font-size: 14px;
+          padding: 10px 12px;
+          border-bottom: 1px solid #e5e7eb;
+          background: #ffffff;
+        }
+        .report-print-meta-row:last-child {
+          border-bottom: none;
+        }
+        .report-print-meta-row span,
+        .report-print-summary-row span,
+        .report-print-entry-row span {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #6b7280;
+          font-weight: 700;
+        }
+        .report-print-meta-row strong,
+        .report-print-summary-row strong,
+        .report-print-entry-row strong {
+          font-size: 13px;
+          color: #111827;
+          text-align: right;
+        }
+        .report-print-summary-list {
+          display: block;
+          margin-bottom: 18px;
+          border: 1px solid #d1d5db;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        .report-print-summary-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 10px 12px;
+          border-bottom: 1px solid #e5e7eb;
+          background: #ffffff;
+        }
+        .report-print-summary-row:last-child {
+          border-bottom: none;
+        }
+        .report-print-entry-list {
+          display: grid;
+          gap: 12px;
+        }
+        .report-print-entry {
+          border: 1px solid #d1d5db;
+          border-radius: 12px;
+          padding: 12px;
+          background: #ffffff;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .report-print-entry-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          padding-bottom: 10px;
+          margin-bottom: 10px;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .report-print-entry-id {
+          font-size: 12px;
+          font-weight: 800;
+          color: #111827;
+        }
+        .report-print-entry-time {
+          margin-top: 4px;
+          font-size: 11px;
+          color: #4b5563;
+          line-height: 1.5;
+        }
+        .report-print-entry-status {
+          padding: 5px 8px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+          border: 1px solid #d1d5db;
+        }
+        .report-print-entry-status.done {
+          background: #ecfdf5;
+          color: #166534;
+          border-color: #bbf7d0;
+        }
+        .report-print-entry-status.cancelled {
+          background: #fef2f2;
+          color: #991b1b;
+          border-color: #fecaca;
+        }
+        .report-print-entry-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px 14px;
+        }
+        .report-print-entry-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding-bottom: 6px;
+          border-bottom: 1px dashed #e5e7eb;
+        }
+        .report-print-table-wrap {
+          border: 1px solid #d1d5db;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        .report-print-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12px;
+          table-layout: fixed;
+        }
+        .report-print-table th,
+        .report-print-table td {
+          padding: 10px 12px;
+          border-bottom: 1px solid #e5e7eb;
+          text-align: left;
+          vertical-align: top;
+          word-break: break-word;
+        }
+        .report-print-table thead th {
+          background: #f3f4f6;
+          color: #111827;
+          font-weight: 800;
+        }
+        .report-print-table tbody tr:last-child td {
+          border-bottom: none;
         }
 
         @media print {
@@ -759,13 +1196,99 @@ export default function ReportList({
           .main-content { margin: 0 !important; padding: 20px !important; width: 100% !important; background: white !important; }
           .glass-panel { border: none !important; background: white !important; box-shadow: none !important; border-radius: 0 !important; }
           body { background: white !important; color: black !important; }
-          .report-print-receipt { display: block !important; padding: 0 0 18px !important; }
-          .report-receipt-subtitle { color: #4b5563 !important; }
-          .report-receipt-lines > div { border-bottom: 1px dashed #9ca3af !important; }
-          table { display: ${filters.mode === 'rekap' ? 'none' : 'table'} !important; }
-          td, th { color: black !important; border-bottom: 1px solid #ddd !important; padding: 12px 8px !important; font-size: 12px !important; }
-          th { background: #f9f9f9 !important; }
+          .report-print-document { display: block !important; padding: 0 !important; }
+          .report-print-meta-list,
+          .report-print-summary-list,
+          .report-print-entry,
+          .report-print-table-wrap { border-color: #d1d5db !important; }
+          .report-print-table th,
+          .report-print-table td { color: #111827 !important; }
+          .report-print-entry-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
           .dashboard-container { display: block !important; }
+        }
+
+        @media (max-width: 640px) {
+          .report-table-wrap {
+            display: none;
+          }
+          .report-mobile-list {
+            display: grid;
+            gap: 12px;
+            padding: 14px;
+          }
+          .report-mobile-card {
+            display: grid;
+            gap: 14px;
+            padding: 16px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+          }
+          .report-mobile-card-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+          }
+          .report-mobile-id {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+          }
+          .report-mobile-time {
+            margin-top: 4px;
+            font-size: 14px;
+            font-weight: 700;
+            color: white;
+            line-height: 1.5;
+          }
+          .report-mobile-status {
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            white-space: nowrap;
+          }
+          .report-mobile-status.done {
+            background: rgba(74,222,128,0.12);
+            color: #86EFAC;
+          }
+          .report-mobile-status.cancelled {
+            background: rgba(248,113,113,0.15);
+            color: #FCA5A5;
+          }
+          .report-mobile-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+          }
+          .report-mobile-grid div {
+            display: grid;
+            gap: 4px;
+          }
+          .report-mobile-grid span {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+          }
+          .report-mobile-grid strong {
+            font-size: 13px;
+            line-height: 1.45;
+            color: white;
+          }
+          .report-mobile-actions {
+            display: flex;
+            justify-content: flex-end;
+          }
+          .report-mobile-muted {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 700;
+          }
         }
       `}</style>
     </>

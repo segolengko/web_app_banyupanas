@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import SidebarNav from './sidebar-nav'
 import { checkSupervisorAccess } from '@/utils/supabase/check-admin'
+import MobileBottomNav from './mobile-bottom-nav'
 
 export default async function Sidebar() {
   const session = await checkSupervisorAccess()
@@ -30,7 +31,7 @@ export default async function Sidebar() {
         </button>
       </form>
 
-      <div>
+      <div className="sidebar-brand">
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
             width: '52px',
@@ -68,7 +69,7 @@ export default async function Sidebar() {
         </div>
 
         <div
-          className="glass-panel"
+          className="glass-panel sidebar-workspace-card"
           style={{
             marginTop: '20px',
             padding: '16px',
@@ -101,8 +102,10 @@ export default async function Sidebar() {
       </div>
 
       <SidebarNav role={session.role} />
+      <MobileBottomNav role={session.role} signOutAction={signOut} />
 
       <div
+        className="sidebar-status-pill"
         style={{
           marginTop: 'auto',
           display: 'flex',
