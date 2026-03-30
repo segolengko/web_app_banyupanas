@@ -167,16 +167,14 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
               <h3 style={{ margin: 0 }}>Riwayat Closing</h3>
             </div>
             <div className="closing-table-wrap" style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: '860px', borderCollapse: 'collapse' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
-                    <th style={{ padding: '18px' }}>Tanggal</th>
-                    <th style={{ padding: '18px' }}>Transaksi</th>
-                    <th style={{ padding: '18px' }}>Tiket</th>
-                    <th style={{ padding: '18px' }}>Pendapatan</th>
-                    <th style={{ padding: '18px' }}>Pengeluaran</th>
-                    <th style={{ padding: '18px' }}>Saldo Bersih</th>
-                    <th style={{ padding: '18px' }}>Ditutup</th>
+                    <th style={{ padding: '18px', width: '16%' }}>Tanggal</th>
+                    <th style={{ padding: '18px', width: '16%' }}>Volume</th>
+                    <th style={{ padding: '18px', width: '30%' }}>Ringkasan Keuangan</th>
+                    <th style={{ padding: '18px', width: '22%' }}>Catatan</th>
+                    <th style={{ padding: '18px', width: '16%' }}>Ditutup</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,15 +183,63 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
 
                     return (
                       <tr key={closing.id} style={{ borderTop: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '18px' }}>{formatDateDisplay(closing.closing_date)}</td>
-                        <td style={{ padding: '18px' }}>{closing.total_transactions.toLocaleString('id-ID')}</td>
-                        <td style={{ padding: '18px' }}>{closing.total_tickets.toLocaleString('id-ID')}</td>
-                        <td style={{ padding: '18px' }}>Rp {closing.gross_revenue.toLocaleString('id-ID')}</td>
-                        <td style={{ padding: '18px' }}>Rp {closing.total_expenses.toLocaleString('id-ID')}</td>
-                        <td style={{ padding: '18px', fontWeight: 700, color: closing.net_revenue < 0 ? '#f87171' : '#4ade80' }}>
-                          Rp {closing.net_revenue.toLocaleString('id-ID')}
+                        <td style={{ padding: '18px', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: 700 }}>{formatDateDisplay(closing.closing_date)}</div>
                         </td>
-                        <td style={{ padding: '18px' }}>
+                        <td style={{ padding: '18px', verticalAlign: 'top' }}>
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <div style={{ display: 'grid', gap: '2px' }}>
+                              <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>
+                                Transaksi
+                              </span>
+                              <strong>{closing.total_transactions.toLocaleString('id-ID')}</strong>
+                            </div>
+                            <div style={{ display: 'grid', gap: '2px' }}>
+                              <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>
+                                Tiket
+                              </span>
+                              <strong>{closing.total_tickets.toLocaleString('id-ID')}</strong>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '18px', verticalAlign: 'top' }}>
+                          <div style={{ display: 'grid', gap: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Pendapatan</span>
+                              <strong>Rp {closing.gross_revenue.toLocaleString('id-ID')}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Diskon</span>
+                              <strong>Rp {closing.total_discount.toLocaleString('id-ID')}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Refund</span>
+                              <strong>Rp {closing.total_refund.toLocaleString('id-ID')}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Pengeluaran</span>
+                              <strong>Rp {closing.total_expenses.toLocaleString('id-ID')}</strong>
+                            </div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                gap: '12px',
+                                paddingTop: '8px',
+                                borderTop: '1px dashed var(--border-color)',
+                              }}
+                            >
+                              <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: 700 }}>Saldo Bersih</span>
+                              <strong style={{ color: closing.net_revenue < 0 ? '#f87171' : '#4ade80' }}>
+                                Rp {closing.net_revenue.toLocaleString('id-ID')}
+                              </strong>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '18px', verticalAlign: 'top', color: closing.notes ? 'var(--text-soft)' : 'var(--text-muted)', lineHeight: 1.6 }}>
+                          {closing.notes || '-'}
+                        </td>
+                        <td style={{ padding: '18px', verticalAlign: 'top' }}>
                           <div style={{ display: 'grid', gap: '2px' }}>
                             <span>{formatDateDisplay(closing.closed_at)}</span>
                             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -209,7 +255,7 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
                   })}
                   {closingHistory.length === 0 && (
                     <tr>
-                      <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                         Belum ada snapshot closing yang tersimpan.
                       </td>
                     </tr>

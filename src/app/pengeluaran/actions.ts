@@ -4,16 +4,25 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { checkAdminAccess } from '@/utils/supabase/check-admin'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { EXPENSE_CATEGORIES } from './categories'
 
 function getString(formData: FormData, key: string) {
   return String(formData.get(key) ?? '').trim()
+}
+
+function normalizeCategory(value: string) {
+  const matched = EXPENSE_CATEGORIES.find(
+    (item) => item.toLowerCase() === value.toLowerCase()
+  )
+
+  return matched ?? value
 }
 
 export async function createExpenseAction(formData: FormData) {
   const user = await checkAdminAccess()
 
   const expenseDate = getString(formData, 'expenseDate')
-  const category = getString(formData, 'category')
+  const category = normalizeCategory(getString(formData, 'category'))
   const description = getString(formData, 'description')
   const paymentMethod = getString(formData, 'paymentMethod')
   const nominal = Number.parseInt(getString(formData, 'nominal'), 10)
@@ -84,7 +93,7 @@ export async function updateExpenseAction(formData: FormData) {
 
   const expenseId = getString(formData, 'expenseId')
   const expenseDate = getString(formData, 'expenseDate')
-  const category = getString(formData, 'category')
+  const category = normalizeCategory(getString(formData, 'category'))
   const description = getString(formData, 'description')
   const paymentMethod = getString(formData, 'paymentMethod')
   const nominal = Number.parseInt(getString(formData, 'nominal'), 10)

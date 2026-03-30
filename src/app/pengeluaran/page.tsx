@@ -5,6 +5,7 @@ import { createClient } from '@/utils/supabase/server'
 import { getEndDateExclusiveIso, getStartDateIso } from '@/utils/report-params'
 import { createExpenseAction, deleteExpenseAction, updateExpenseAction } from './actions'
 import type { ExpensePaymentMethod } from '@/types/admin'
+import { EXPENSE_CATEGORIES } from './categories'
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -46,6 +47,12 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
   const endDate = readValue(params, 'endDate')
   const category = readValue(params, 'category').trim()
   const editId = readValue(params, 'edit').trim()
+  const exportParams = new URLSearchParams({
+    ...(startDate ? { startDate } : {}),
+    ...(endDate ? { endDate } : {}),
+    ...(category ? { category } : {}),
+  })
+  const exportHref = exportParams.toString() ? `/pengeluaran/export?${exportParams.toString()}` : '/pengeluaran/export'
 
   let query = supabase
     .from('operational_expenses')
@@ -92,12 +99,26 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
           className="glass-panel"
           style={{ padding: '22px', marginBottom: '28px', display: 'grid', gap: '18px' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <strong style={{ fontSize: '17px' }}>Filter Pengeluaran</strong>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button type="submit" className="btn-primary" style={{ padding: '12px 18px' }}>Terapkan</button>
-              <a
-                href="/pengeluaran"
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <strong style={{ fontSize: '17px' }}>Filter Pengeluaran</strong>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <a
+                  href={exportHref}
+                  style={{
+                    padding: '12px 18px',
+                    borderRadius: '14px',
+                    border: '1px solid rgba(16, 185, 129, 0.22)',
+                    color: 'white',
+                    textDecoration: 'none',
+                    background: '#10B981',
+                    fontWeight: 700,
+                  }}
+                >
+                  Export Excel
+                </a>
+                <button type="submit" className="btn-primary" style={{ padding: '12px 18px' }}>Terapkan</button>
+                <a
+                  href="/pengeluaran"
                 style={{
                   padding: '12px 18px',
                   borderRadius: '14px',
@@ -124,8 +145,45 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
             </div>
             <div className="input-group">
               <label style={{ fontSize: '13px', marginBottom: '6px', display: 'block' }}>Kategori</label>
-              <input type="text" name="category" defaultValue={category} placeholder="Contoh: ATK, konsumsi" />
+              <input type="text" name="category" defaultValue={category} placeholder="Contoh: ATK, konsumsi" list="expense-category-options" />
             </div>
+          </div>
+
+          <datalist id="expense-category-options">
+            {EXPENSE_CATEGORIES.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {EXPENSE_CATEGORIES.map((item) => {
+              const params = new URLSearchParams({
+                ...(startDate ? { startDate } : {}),
+                ...(endDate ? { endDate } : {}),
+                category: item,
+              })
+
+              const isActive = category.toLowerCase() === item.toLowerCase()
+
+              return (
+                <a
+                  key={item}
+                  href={`/pengeluaran?${params.toString()}`}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '999px',
+                    textDecoration: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: isActive ? '#0f172a' : 'var(--text-soft)',
+                    background: isActive ? '#99f6e4' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${isActive ? 'rgba(153, 246, 228, 0.9)' : 'rgba(255,255,255,0.08)'}`,
+                  }}
+                >
+                  {item}
+                </a>
+              )
+            })}
           </div>
         </form>
 
@@ -160,7 +218,23 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
                     <td style={{ padding: '18px' }}>
                       {formatDateDisplay(expense.expense_at)}
                     </td>
-                    <td style={{ padding: '18px', fontWeight: 700 }}>{expense.category}</td>
+                    <td style={{ padding: '18px' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '6px 10px',
+                          borderRadius: '999px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color: 'var(--text-soft)',
+                        }}
+                      >
+                        {expense.category}
+                      </span>
+                    </td>
                     <td style={{ padding: '18px', textTransform: 'uppercase', color: 'var(--text-muted)', fontSize: '13px' }}>{expense.payment_method}</td>
                     <td style={{ padding: '18px', color: 'var(--text-muted)' }}>{expense.description || '-'}</td>
                     <td style={{ padding: '18px', fontWeight: 700, color: '#fbbf24' }}>Rp {expense.nominal.toLocaleString('id-ID')}</td>
@@ -238,7 +312,7 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
                   <div className="expense-mobile-card-head">
                     <div>
                       <div className="expense-mobile-date">{formatDateDisplay(expense.expense_at)}</div>
-                      <div className="expense-mobile-category">{expense.category}</div>
+                          <div className="expense-mobile-category">{expense.category}</div>
                     </div>
                     <div className="expense-mobile-amount">Rp {expense.nominal.toLocaleString('id-ID')}</div>
                   </div>
@@ -298,7 +372,14 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
               </div>
               <div className="input-group">
                 <label style={{ fontSize: '13px', marginBottom: '6px', display: 'block' }}>Kategori</label>
-                <input type="text" name="category" defaultValue={selectedExpense?.category ?? ''} placeholder="Contoh: konsumsi, parkir, BBM" required />
+                <input
+                  type="text"
+                  name="category"
+                  defaultValue={selectedExpense?.category ?? ''}
+                  placeholder="Contoh: konsumsi, parkir, BBM"
+                  list="expense-form-category-options"
+                  required
+                />
               </div>
               <div className="input-group">
                 <label style={{ fontSize: '13px', marginBottom: '6px', display: 'block' }}>Nominal</label>
@@ -349,6 +430,11 @@ export default async function PengeluaranPage({ searchParams }: PageProps) {
                 )}
               </div>
             </form>
+            <datalist id="expense-form-category-options">
+              {EXPENSE_CATEGORIES.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
           </div>
           )}
         </div>
