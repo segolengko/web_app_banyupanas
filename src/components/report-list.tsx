@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { FormEvent, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Download, Printer, Filter, Search, ChevronLeft, ChevronRight, Hash, User, Ticket, CreditCard, Banknote, RotateCcw, Rows3, CalendarDays, Ban, CircleDollarSign, Wallet } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Calendar, Download, Printer, Filter, Search, ChevronLeft, ChevronRight, Hash, User, Ticket, CreditCard, Banknote, RotateCcw, Rows3, CalendarDays, Ban } from 'lucide-react'
 import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } from '@/types/admin'
 import { cancelTransactionAction } from '@/app/laporan/actions'
 import { createReportSearchParams } from '@/utils/report-params'
 import { formatCurrency, getPetugasName, getTransactionRefund, isCancelledTransaction } from '@/utils/reporting'
+import ReportRefresh from '@/components/report-refresh'
+import ReportSummaryCards from '@/components/report-summary-cards'
+import ReportCancelDialog from '@/components/report-cancel-dialog'
 
 type ReportListProps = {
   detailData: ReportTransaction[]
@@ -95,6 +97,7 @@ export default function ReportList({
   }
 
   const visibleCount = filters.mode === 'rekap' ? recapData.length : detailData.length
+  const autoRefreshEnabled = filters.mode === 'detail' && filters.searchTerm.trim().length === 0
 
   const getJakartaDateKey = (value: string | Date) =>
     new Intl.DateTimeFormat('en-CA', {
@@ -216,6 +219,8 @@ export default function ReportList({
         </div>
       </form>
 
+      <ReportRefresh enabled={autoRefreshEnabled} intervalSeconds={90} />
+
       <div className="no-print" style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <Link href={createModeHref('detail')} className={`export-btn ${filters.mode === 'detail' ? 'excel' : 'pdf'}`}>
           <Rows3 size={16} /> Laporan Detail
@@ -225,15 +230,7 @@ export default function ReportList({
         </Link>
       </div>
 
-      <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px', marginBottom: '40px' }}>
-        <SummaryCard title="Pendapatan Tiket Bersih" value={formatCurrency(summary.revenue)} icon={<Banknote size={24} />} color="#10B981" />
-        <SummaryCard title="Tiket Valid" value={`${summary.tickets} Tiket`} icon={<Ticket size={24} />} color="#6366F1" />
-        <SummaryCard title="Total Diskon" value={formatCurrency(summary.discount)} icon={<CreditCard size={24} />} color="#FB7185" isNegative={summary.discount > 0} />
-        <SummaryCard title="Total Refund" value={formatCurrency(summary.refund)} icon={<CircleDollarSign size={24} />} color="#F87171" isNegative={summary.refund > 0} />
-        <SummaryCard title="Total Pengeluaran" value={formatCurrency(summary.expenses)} icon={<Wallet size={24} />} color="#F59E0B" isNegative={summary.expenses > 0} />
-        <SummaryCard title="Saldo Bersih" value={formatCurrency(summary.netRevenue)} icon={<Banknote size={24} />} color="#22C55E" isNegative={summary.netRevenue < 0} />
-        <SummaryCard title="Transaksi Batal" value={`${summary.cancelledCount} Transaksi`} icon={<Ban size={24} />} color="#F59E0B" />
-      </div>
+      <ReportSummaryCards summary={summary} />
 
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
         <div className="report-table-wrap" style={{ overflowX: 'auto' }}>
@@ -702,71 +699,15 @@ export default function ReportList({
           </div>
         )}
       </div>
-
-      {cancelTarget && (
-        <div className="report-modal-backdrop no-print">
-          <div className="report-modal glass-panel">
-            <div className="report-modal-header">
-              <div>
-                <h3>Batalkan Transaksi</h3>
-                <p>
-                  Transaksi <strong>{cancelTarget.id.substring(0, 8)}...</strong> akan ditandai dibatalkan dan
-                  nominal refund akan masuk ke laporan.
-                </p>
-              </div>
-              <button type="button" className="report-modal-close" onClick={closeCancelDialog} disabled={Boolean(pendingTransactionId)}>
-                ×
-              </button>
-            </div>
-
-            <form onSubmit={submitCancelDialog} className="report-modal-body">
-              <div className="report-modal-summary">
-                <div>
-                  <span>Total Bayar</span>
-                  <strong>{formatCurrency(cancelTarget.total_bayar)}</strong>
-                </div>
-                <div>
-                  <span>Petugas</span>
-                  <strong>{getPetugasName(cancelTarget) || '-'}</strong>
-                </div>
-              </div>
-
-              <label className="report-modal-field">
-                <span>Alasan Pembatalan</span>
-                <textarea
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                  placeholder="Contoh: pengunjung batal masuk dan meminta uang kembali."
-                  rows={4}
-                />
-              </label>
-
-              <label className="report-modal-field">
-                <span>Nominal Refund</span>
-                <input
-                  type="text"
-                  value={formatCurrency(cancelTarget.total_bayar)}
-                  readOnly
-                  disabled
-                />
-                <small>Refund otomatis mengikuti total bayar transaksi.</small>
-              </label>
-
-              {cancelError && <div className="report-modal-error">{cancelError}</div>}
-
-              <div className="report-modal-actions">
-                <button type="button" className="export-btn pdf" onClick={closeCancelDialog} disabled={Boolean(pendingTransactionId)}>
-                  Tutup
-                </button>
-                <button type="submit" className="report-cancel-btn" disabled={Boolean(pendingTransactionId)}>
-                  <Ban size={14} />
-                  {pendingTransactionId ? 'Menyimpan...' : 'Konfirmasi Batal'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ReportCancelDialog
+        cancelTarget={cancelTarget}
+        cancelReason={cancelReason}
+        cancelError={cancelError}
+        pending={Boolean(pendingTransactionId)}
+        onClose={closeCancelDialog}
+        onReasonChange={setCancelReason}
+        onSubmit={submitCancelDialog}
+      />
 
       <style jsx global>{`
         .input-group {
@@ -1295,16 +1236,4 @@ export default function ReportList({
   )
 }
 
-function SummaryCard({ title, value, icon, color, isNegative = false }: { title: string, value: string, icon: ReactNode, color: string, isNegative?: boolean }) {
-  return (
-    <div className="glass-panel" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px', borderBottom: `2px solid ${color}` }}>
-      <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: `${color}15`, color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {icon}
-      </div>
-      <div>
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '4px', fontWeight: '500' }}>{title}</p>
-        <h4 style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: isNegative && value !== 'Rp 0' && value !== '-Rp 0' ? '#F87171' : 'white' }}>{value}</h4>
-      </div>
-    </div>
-  )
-}
+

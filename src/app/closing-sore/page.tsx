@@ -1,26 +1,12 @@
 import Sidebar from '@/components/sidebar'
 import { checkSupervisorAccess } from '@/utils/supabase/check-admin'
 import { createClient } from '@/utils/supabase/server'
-import { getEndDateExclusiveIso, getStartDateIso } from '@/utils/report-params'
 import PrintButton from './print-button'
 import { saveClosingAction } from './actions'
+import { formatDateDisplay, getClosingSummaryData } from './closing-data'
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
-}
-
-type ReportSummaryRpcRow = {
-  revenue: number | string
-  tickets: number | string
-  discount: number | string
-  refund: number | string
-  cancelled_count: number | string
-  transaction_count: number | string
-}
-
-type ExpenseSummaryRpcRow = {
-  expenses: number | string
-  expense_count: number | string
 }
 
 type ClosingRow = {
@@ -47,39 +33,6 @@ function readValue(source: Record<string, string | string[] | undefined>, key: s
   return value ?? ''
 }
 
-function asFirstItem<T>(value: unknown): T | null {
-  if (Array.isArray(value)) {
-    return (value[0] as T | undefined) ?? null
-  }
-
-  if (value && typeof value === 'object') {
-    return value as T
-  }
-
-  return null
-}
-
-function toNumber(value: number | string | null | undefined) {
-  if (typeof value === 'number') {
-    return value
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-
-  return 0
-}
-
-function formatDateDisplay(value: string) {
-  return new Intl.DateTimeFormat('id-ID', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value))
-}
-
 export default async function ClosingSorePage({ searchParams }: PageProps) {
   const session = await checkSupervisorAccess()
   const supabase = await createClient()
@@ -87,37 +40,18 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {}
   const closingDate = readValue(params, 'date') || new Date().toISOString().slice(0, 10)
   const notes = readValue(params, 'notes')
-
-  const summaryRpcParams = {
-    p_start: getStartDateIso(closingDate),
-    p_end: getEndDateExclusiveIso(closingDate),
-    p_status: null,
-    p_search: null,
-  }
-
-  const expenseRpcParams = {
-    p_start: getStartDateIso(closingDate),
-    p_end: getEndDateExclusiveIso(closingDate),
-  }
-
-  const { data: transactionSummaryData } = await supabase
-    .rpc('report_transaction_summary', summaryRpcParams)
-    .returns<ReportSummaryRpcRow>()
-
-  const { data: expenseSummaryData } = await supabase
-    .rpc('report_expense_summary', expenseRpcParams)
-    .returns<ExpenseSummaryRpcRow>()
-
-  const transactionSummary = asFirstItem<ReportSummaryRpcRow>(transactionSummaryData)
-  const expenseSummary = asFirstItem<ExpenseSummaryRpcRow>(expenseSummaryData)
-
-  const grossRevenue = toNumber(transactionSummary?.revenue)
-  const totalTickets = toNumber(transactionSummary?.tickets)
-  const totalDiscount = toNumber(transactionSummary?.discount)
-  const totalRefund = toNumber(transactionSummary?.refund)
-  const totalTransactions = toNumber(transactionSummary?.transaction_count)
-  const totalExpenses = toNumber(expenseSummary?.expenses)
-  const netRevenue = grossRevenue - totalExpenses
+  const {
+    grossRevenue,
+    totalTickets,
+    totalDiscount,
+    totalRefund,
+    totalTransactions,
+    totalExpenses,
+    netRevenue,
+  } = await getClosingSummaryData(closingDate)
+  const query = `date=${encodeURIComponent(closingDate)}${notes ? `&notes=${encodeURIComponent(notes)}` : ''}`
+  const printHref = `/closing-sore/pdf?${query}`
+  const thermalPrintHref = `/closing-sore/pdf-thermal?${query}`
 
   const { data: closingHistoryData } = await supabase
     .from('cash_closings')
@@ -136,10 +70,13 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
           <div>
             <h1 style={{ fontSize: '32px', fontWeight: '700', margin: 0 }}>Closing Sore</h1>
             <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>
-              Rekap penjualan harian admin: pendapatan tiket dikurangi pengeluaran operasional, siap dicetak sebagai receipt PDF.
+              Rekap penjualan harian admin: pendapatan tiket dikurangi pengeluaran operasional, siap dicetak sebagai laporan PDF formal.
             </p>
           </div>
-          <PrintButton />
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <PrintButton href={printHref} label="Cetak PDF Formal" />
+            <PrintButton href={thermalPrintHref} label="Cetak PDF Thermal" />
+          </div>
         </header>
 
         <form method="get" action="/closing-sore" className="glass-panel no-print" style={{ padding: '22px', marginBottom: '24px', display: 'grid', gap: '16px' }}>
@@ -379,7 +316,8 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
 
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                   <button type="submit" className="btn-primary" style={{ padding: '14px 18px' }}>Simpan Closing</button>
-                  <PrintButton />
+                  <PrintButton href={printHref} label="Cetak PDF Formal" />
+                  <PrintButton href={thermalPrintHref} label="Cetak PDF Thermal" />
                 </div>
               </form>
             </section>
