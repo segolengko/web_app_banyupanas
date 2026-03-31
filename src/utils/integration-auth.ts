@@ -40,12 +40,31 @@ function hasScope(scopes: string[] | null, requiredScope: IntegrationScope) {
   return Array.isArray(scopes) && scopes.includes(requiredScope)
 }
 
+function safeCompareHex(expectedHex: string, actualHex: string) {
+  try {
+    const expected = Buffer.from(expectedHex, 'hex')
+    const actual = Buffer.from(actualHex, 'hex')
+
+    if (expected.length === 0 || actual.length === 0) {
+      return false
+    }
+
+    if (expected.length !== actual.length) {
+      return false
+    }
+
+    return timingSafeEqual(expected, actual)
+  } catch {
+    return false
+  }
+}
+
 export async function authenticateIntegrationRequest(
   request: NextRequest,
   requiredScope: IntegrationScope,
 ): Promise<IntegrationAuthResult | null> {
   const rawKey = parseApiKey(request)
-  if (!rawKey || rawKey.length < 12) {
+  if (!rawKey || rawKey.length < 12 || rawKey.length > 256) {
     return null
   }
 
@@ -63,10 +82,7 @@ export async function authenticateIntegrationRequest(
     return null
   }
 
-  const expected = Buffer.from(client.key_hash, 'hex')
-  const actual = Buffer.from(keyHash, 'hex')
-
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+  if (!safeCompareHex(client.key_hash, keyHash)) {
     return null
   }
 

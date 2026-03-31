@@ -4,6 +4,7 @@ import { authenticateIntegrationRequest } from '@/utils/integration-auth'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
+const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 type TransactionRow = {
   id: string
@@ -25,6 +26,15 @@ type UserProfileRow = {
   nama_lengkap: string | null
 }
 
+function noStoreJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store, max-age=0',
+    },
+  })
+}
+
 function parsePositiveInt(value: string | null, fallback: number) {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
@@ -38,16 +48,23 @@ function parseStatus(value: string | null) {
   return null
 }
 
+function parseDateParam(value: string | null) {
+  const normalized = value?.trim() || null
+  if (!normalized) return null
+
+  return DATE_PARAM_PATTERN.test(normalized) ? normalized : false
+}
+
 export async function GET(request: NextRequest) {
   const auth = await authenticateIntegrationRequest(request, 'transactions:read')
 
   if (!auth) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         error: 'UNAUTHORIZED',
         message: 'API key tidak valid atau tidak memiliki scope transactions:read.',
       },
-      { status: 401 },
+      401,
     )
   }
 
@@ -55,8 +72,19 @@ export async function GET(request: NextRequest) {
   const page = parsePositiveInt(searchParams.get('page'), 1)
   const limit = Math.min(parsePositiveInt(searchParams.get('limit'), DEFAULT_LIMIT), MAX_LIMIT)
   const status = parseStatus(searchParams.get('status'))
-  const startDate = searchParams.get('start_date')?.trim() || null
-  const endDate = searchParams.get('end_date')?.trim() || null
+  const startDate = parseDateParam(searchParams.get('start_date'))
+  const endDate = parseDateParam(searchParams.get('end_date'))
+
+  if (startDate === false || endDate === false) {
+    return noStoreJson(
+      {
+        error: 'INVALID_QUERY',
+        message: 'Format tanggal harus YYYY-MM-DD.',
+      },
+      400,
+    )
+  }
+
   const from = (page - 1) * limit
   const to = from + limit - 1
 
@@ -94,13 +122,23 @@ export async function GET(request: NextRequest) {
   ])
 
   if (countError || dataError) {
-    return NextResponse.json(
+    console.error('Integration transactions query failed', {
+      countError,
+      dataError,
+      page,
+      limit,
+      status,
+      startDate,
+      endDate,
+      clientId: auth.clientId,
+    })
+
+    return noStoreJson(
       {
         error: 'QUERY_FAILED',
         message: 'Gagal mengambil data transaksi integrasi.',
-        details: dataError?.message ?? countError?.message ?? null,
       },
-      { status: 500 },
+      500,
     )
   }
 
@@ -116,20 +154,25 @@ export async function GET(request: NextRequest) {
       .returns<UserProfileRow[]>()
 
     if (userProfilesError) {
-      return NextResponse.json(
+      console.error('Integration user profile lookup failed', {
+        userProfilesError,
+        clientId: auth.clientId,
+        userIds,
+      })
+
+      return noStoreJson(
         {
           error: 'QUERY_FAILED',
-          message: 'Gagal mengambil data petugas integrasi.',
-          details: userProfilesError.message,
+          message: 'Gagal mengambil data transaksi integrasi.',
         },
-        { status: 500 },
+        500,
       )
     }
 
     userNameMap = new Map((userProfiles ?? []).map((profile) => [profile.id, profile.nama_lengkap]))
   }
 
-  return NextResponse.json({
+  return noStoreJson({
     data: rows.map((row) => ({
       id: row.id,
       created_at: row.created_at,
