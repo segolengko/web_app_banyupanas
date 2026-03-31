@@ -1,4 +1,5 @@
 import type { DailyReportRow, ReportSummary, ReportTransaction } from '@/types/admin'
+import { formatJakartaDateFromKey, getJakartaDateKey } from '@/utils/jakarta-time'
 
 export function getPetugasName(transaction: ReportTransaction) {
   return Array.isArray(transaction.users_profile)
@@ -61,8 +62,7 @@ export function summarizeTransactions(transactions: ReportTransaction[]): Report
 
 export function groupTransactionsByDate(transactions: ReportTransaction[]): DailyReportRow[] {
   const grouped = transactions.reduce<Map<string, DailyReportRow>>((map, transaction) => {
-    const date = new Date(transaction.created_at)
-    const dateKey = date.toISOString().split('T')[0]
+    const dateKey = getJakartaDateKey(transaction.created_at)
     const existing = map.get(dateKey)
     const cancelled = isCancelledTransaction(transaction)
     const refund = getTransactionRefund(transaction)
@@ -80,12 +80,7 @@ export function groupTransactionsByDate(transactions: ReportTransaction[]): Dail
 
     map.set(dateKey, {
       dateKey,
-      label: date.toLocaleDateString('id-ID', {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      }),
+      label: formatJakartaDateFromKey(dateKey),
       transactionCount: 1,
       cancelledCount: cancelled ? 1 : 0,
       tickets: cancelled ? 0 : (transaction.total_tiket ?? 0),

@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { getEndDateExclusiveIso, getStartDateIso } from '@/utils/report-params'
+import { formatJakartaDate } from '@/utils/jakarta-time'
 
 type ReportSummaryRpcRow = {
   revenue: number | string
@@ -52,11 +53,7 @@ function toNumber(value: number | string | null | undefined) {
 }
 
 export function formatDateDisplay(value: string) {
-  return new Intl.DateTimeFormat('id-ID', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value))
+  return formatJakartaDate(value)
 }
 
 export async function getClosingSummaryData(closingDate: string): Promise<ClosingSummaryData> {

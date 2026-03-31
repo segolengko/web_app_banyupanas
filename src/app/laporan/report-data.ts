@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } from '@/types/admin'
 import { REPORT_PAGE_SIZE, getEndDateExclusiveIso, getStartDateIso } from '@/utils/report-params'
+import { formatJakartaDateFromKey } from '@/utils/jakarta-time'
 
 type ReportTransactionRpcRow = {
   id: string
@@ -39,6 +40,8 @@ type DailyReportRpcRow = {
   discount: number | string
   refund: number | string
   revenue: number | string
+  expenses?: number | string
+  net_revenue?: number | string
   total_items: number | string
 }
 
@@ -130,23 +133,20 @@ function mapTransactionRow(row: ReportTransactionRpcRow): ReportTransaction {
 }
 
 function mapRecapRow(row: DailyReportRpcRow): DailyReportRow {
-  const date = new Date(`${row.date_key}T00:00:00`)
+  const revenue = toNumber(row.revenue)
+  const expenses = toNumber(row.expenses)
 
   return {
     dateKey: row.date_key,
-    label: date.toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }),
+    label: formatJakartaDateFromKey(row.date_key),
     transactionCount: toNumber(row.transaction_count),
     cancelledCount: toNumber(row.cancelled_count),
     tickets: toNumber(row.tickets),
     discount: toNumber(row.discount),
     refund: toNumber(row.refund),
-    expenses: 0,
-    netRevenue: toNumber(row.revenue),
-    revenue: toNumber(row.revenue),
+    expenses,
+    netRevenue: row.net_revenue == null ? revenue - expenses : toNumber(row.net_revenue),
+    revenue,
   }
 }
 
@@ -185,14 +185,9 @@ function mergeRecapRows(rows: DailyReportRow[], expenseRows: DailyExpenseRpcRow[
       continue
     }
 
-    const date = new Date(`${dateKey}T00:00:00`)
     grouped.set(dateKey, {
       dateKey,
-      label: date.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      }),
+      label: formatJakartaDateFromKey(dateKey),
       transactionCount: 0,
       cancelledCount: 0,
       tickets: 0,
@@ -253,32 +248,48 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
   }
 
   if (filters.mode === 'rekap') {
-    const { data: recapResult } = await supabase
-      .rpc('report_daily_recap', {
-        ...rpcParams,
-        p_page: 1,
-        p_page_size: fetchAll ? 5000 : pageSize,
-      })
+    const recapRpcParams = {
+      ...rpcParams,
+      p_page: fetchAll ? 1 : rpcParams.p_page,
+      p_page_size: fetchAll ? 5000 : rpcParams.p_page_size,
+    }
+
+    const { data: optimizedRecapResult, error: optimizedRecapError } = await supabase
+      .rpc('report_daily_recap_with_expenses', recapRpcParams)
       .returns<DailyReportRpcRow[]>()
 
-    const normalizedRecapRows = asArray<DailyReportRpcRow>(recapResult)
-    const { data: expenseRecapRows } = await supabase
-      .rpc('report_daily_expenses', createExpenseRpcParams(filters))
-      .returns<DailyExpenseRpcRow[]>()
-
-    const mergedRecapRows = mergeRecapRows(
-      normalizedRecapRows.map(mapRecapRow),
-      asArray<DailyExpenseRpcRow>(expenseRecapRows)
-    )
-
-    if (fetchAll) {
-      totalItems = mergedRecapRows.length
-      recapRows = mergedRecapRows
+    if (!optimizedRecapError) {
+      const normalizedRecapRows = asArray<DailyReportRpcRow>(optimizedRecapResult)
+      recapRows = normalizedRecapRows.map(mapRecapRow)
+      totalItems = toNumber(normalizedRecapRows[0]?.total_items) || recapRows.length
     } else {
-      const from = (filters.page - 1) * pageSize
-      const to = from + pageSize
-      totalItems = mergedRecapRows.length
-      recapRows = mergedRecapRows.slice(from, to)
+      const { data: recapResult } = await supabase
+        .rpc('report_daily_recap', {
+          ...rpcParams,
+          p_page: 1,
+          p_page_size: fetchAll ? 5000 : pageSize,
+        })
+        .returns<DailyReportRpcRow[]>()
+
+      const normalizedRecapRows = asArray<DailyReportRpcRow>(recapResult)
+      const { data: expenseRecapRows } = await supabase
+        .rpc('report_daily_expenses', createExpenseRpcParams(filters))
+        .returns<DailyExpenseRpcRow[]>()
+
+      const mergedRecapRows = mergeRecapRows(
+        normalizedRecapRows.map(mapRecapRow),
+        asArray<DailyExpenseRpcRow>(expenseRecapRows)
+      )
+
+      if (fetchAll) {
+        totalItems = mergedRecapRows.length
+        recapRows = mergedRecapRows
+      } else {
+        const from = (filters.page - 1) * pageSize
+        const to = from + pageSize
+        totalItems = mergedRecapRows.length
+        recapRows = mergedRecapRows.slice(from, to)
+      }
     }
   } else {
     const { data: detailRows } = await supabase
@@ -304,3 +315,5 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
     totalPages,
   } satisfies ReportPageData
 }
+
+

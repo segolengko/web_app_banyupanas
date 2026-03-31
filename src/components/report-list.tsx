@@ -8,6 +8,7 @@ import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } 
 import { cancelTransactionAction } from '@/app/laporan/actions'
 import { createReportSearchParams } from '@/utils/report-params'
 import { formatCurrency, getPetugasName, getTransactionRefund, isCancelledTransaction } from '@/utils/reporting'
+import { formatJakartaDateTime, getJakartaDateKey } from '@/utils/jakarta-time'
 import ReportRefresh from '@/components/report-refresh'
 import ReportSummaryCards from '@/components/report-summary-cards'
 import ReportCancelDialog from '@/components/report-cancel-dialog'
@@ -98,14 +99,6 @@ export default function ReportList({
 
   const visibleCount = filters.mode === 'rekap' ? recapData.length : detailData.length
   const autoRefreshEnabled = filters.mode === 'detail' && filters.searchTerm.trim().length === 0
-
-  const getJakartaDateKey = (value: string | Date) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Jakarta',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(typeof value === 'string' ? new Date(value) : value)
 
   const canCancelTransactionToday = (transaction: ReportTransaction) =>
     getJakartaDateKey(transaction.created_at) === getJakartaDateKey(new Date())
@@ -276,13 +269,7 @@ export default function ReportList({
                           {transaction.id.substring(0, 8)}...
                         </td>
                         <td style={{ padding: '20px' }}>
-                          {new Date(transaction.created_at).toLocaleString('id-ID', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {formatJakartaDateTime(transaction.created_at)}
                         </td>
                         <td style={{ padding: '20px' }}>{petugasName || '-'}</td>
                         <td style={{ padding: '20px', fontWeight: '600' }}>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</td>
@@ -388,13 +375,7 @@ export default function ReportList({
                           ID {transaction.id.substring(0, 8)}...
                         </div>
                         <div className="report-mobile-time">
-                          {new Date(transaction.created_at).toLocaleString('id-ID', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {formatJakartaDateTime(transaction.created_at)}
                         </div>
                       </div>
                       <div
@@ -524,13 +505,7 @@ export default function ReportList({
               <div className="report-print-meta-row">
                 <span>Dicetak</span>
                 <strong>
-                  {new Date().toLocaleString('id-ID', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatJakartaDateTime(new Date())}
                 </strong>
               </div>
             </div>
@@ -576,13 +551,7 @@ export default function ReportList({
                       <div>
                         <div className="report-print-entry-id">ID {transaction.id.substring(0, 8)}...</div>
                         <div className="report-print-entry-time">
-                          {new Date(transaction.created_at).toLocaleString('id-ID', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {formatJakartaDateTime(transaction.created_at)}
                         </div>
                       </div>
                       <div className={`report-print-entry-status ${cancelled ? 'cancelled' : 'done'}`}>

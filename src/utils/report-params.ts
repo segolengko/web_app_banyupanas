@@ -1,4 +1,5 @@
 import type { ReportFilters } from '@/types/admin'
+import { getJakartaEndDateExclusiveIso, getJakartaStartDateIso } from '@/utils/jakarta-time'
 
 type SearchParamRecord = Record<string, string | string[] | undefined>
 
@@ -73,13 +74,11 @@ export function getReportRange(page: number) {
 }
 
 export function getStartDateIso(startDate: string) {
-  return `${startDate}T00:00:00.000Z`
+  return getJakartaStartDateIso(startDate)
 }
 
 export function getEndDateExclusiveIso(endDate: string) {
-  const date = new Date(`${endDate}T00:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString()
+  return getJakartaEndDateExclusiveIso(endDate)
 }
 
 export function sanitizeSearchTerm(searchTerm: string) {

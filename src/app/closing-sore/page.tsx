@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import PrintButton from './print-button'
 import { saveClosingAction } from './actions'
 import { formatDateDisplay, getClosingSummaryData } from './closing-data'
+import { formatJakartaDateTime, getJakartaTodayDate } from '@/utils/jakarta-time'
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -38,7 +39,7 @@ export default async function ClosingSorePage({ searchParams }: PageProps) {
   const supabase = await createClient()
   const canManageClosing = session.role !== 'supervisor'
   const params = (await searchParams) ?? {}
-  const closingDate = readValue(params, 'date') || new Date().toISOString().slice(0, 10)
+  const closingDate = readValue(params, 'date') || getJakartaTodayDate()
   const notes = readValue(params, 'notes')
   const {
     grossRevenue,

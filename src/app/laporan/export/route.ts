@@ -5,6 +5,7 @@ import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } 
 import { getEndDateExclusiveIso, getStartDateIso, parseReportFilters } from '@/utils/report-params'
 import { getPetugasName } from '@/utils/reporting'
 import { hasAllowedRole, SUPERVISOR_ROLES } from '@/utils/supabase/check-admin'
+import { formatJakartaDateFromKey, formatJakartaDateTime, getJakartaTodayDate } from '@/utils/jakarta-time'
 
 function applyNumberFormat(
   worksheet: XLSX.WorkSheet,
@@ -110,6 +111,8 @@ type DailyReportRpcRow = {
   discount: number | string
   refund: number | string
   revenue: number | string
+  expenses?: number | string
+  net_revenue?: number | string
   total_items: number | string
 }
 
@@ -209,23 +212,20 @@ function mapTransactionRow(row: ReportTransactionRpcRow): ReportTransaction {
 }
 
 function mapRecapRow(row: DailyReportRpcRow): DailyReportRow {
-  const date = new Date(`${row.date_key}T00:00:00`)
+  const revenue = toNumber(row.revenue)
+  const expenses = toNumber(row.expenses)
 
   return {
     dateKey: row.date_key,
-    label: date.toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }),
+    label: formatJakartaDateFromKey(row.date_key),
     transactionCount: toNumber(row.transaction_count),
     cancelledCount: toNumber(row.cancelled_count),
     tickets: toNumber(row.tickets),
     discount: toNumber(row.discount),
     refund: toNumber(row.refund),
-    expenses: 0,
-    netRevenue: toNumber(row.revenue),
-    revenue: toNumber(row.revenue),
+    expenses,
+    netRevenue: row.net_revenue == null ? revenue - expenses : toNumber(row.net_revenue),
+    revenue,
   }
 }
 
@@ -264,14 +264,9 @@ function mergeRecapRows(rows: DailyReportRow[], expenseRows: DailyExpenseRpcRow[
       continue
     }
 
-    const date = new Date(`${dateKey}T00:00:00`)
     grouped.set(dateKey, {
       dateKey,
-      label: date.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      }),
+      label: formatJakartaDateFromKey(dateKey),
       transactionCount: 0,
       cancelledCount: 0,
       tickets: 0,
@@ -329,23 +324,37 @@ export async function GET(request: Request) {
     .rpc('report_filtered_transactions', rpcParams)
     .returns<ReportTransactionRpcRow[]>()
 
-  const { data: recapResult } = await supabase
-    .rpc('report_daily_recap', {
+  const { data: optimizedRecapResult, error: optimizedRecapError } = await supabase
+    .rpc('report_daily_recap_with_expenses', {
       ...rpcParams,
       p_page: 1,
       p_page_size: EXPORT_ROW_LIMIT,
     })
     .returns<DailyReportRpcRow[]>()
 
-  const { data: expenseRecapRows } = await supabase
-    .rpc('report_daily_expenses', expenseRpcParams)
-    .returns<DailyExpenseRpcRow[]>()
-
   const transactions = asArray<ReportTransactionRpcRow>(detailRows).map(mapTransactionRow)
-  const recapRows = mergeRecapRows(
-    asArray<DailyReportRpcRow>(recapResult).map(mapRecapRow),
-    asArray<DailyExpenseRpcRow>(expenseRecapRows)
-  )
+  let recapRows: DailyReportRow[]
+
+  if (!optimizedRecapError) {
+    recapRows = asArray<DailyReportRpcRow>(optimizedRecapResult).map(mapRecapRow)
+  } else {
+    const { data: recapResult } = await supabase
+      .rpc('report_daily_recap', {
+        ...rpcParams,
+        p_page: 1,
+        p_page_size: EXPORT_ROW_LIMIT,
+      })
+      .returns<DailyReportRpcRow[]>()
+
+    const { data: expenseRecapRows } = await supabase
+      .rpc('report_daily_expenses', expenseRpcParams)
+      .returns<DailyExpenseRpcRow[]>()
+
+    recapRows = mergeRecapRows(
+      asArray<DailyReportRpcRow>(recapResult).map(mapRecapRow),
+      asArray<DailyExpenseRpcRow>(expenseRecapRows)
+    )
+  }
 
   const reportTitle = filters.mode === 'rekap' ? 'Laporan Rekap Harian' : 'Laporan Detail Transaksi'
   const periodText = filters.startDate || filters.endDate
@@ -392,7 +401,7 @@ export async function GET(request: Request) {
       ['ID Transaksi', 'Waktu', 'Petugas', 'Jumlah Tiket', 'Status', 'Subtotal', 'Diskon', 'Total Bayar', 'Refund', 'Metode', 'Alasan Batal'],
       ...transactions.map((transaction) => [
         transaction.id,
-        new Date(transaction.created_at).toLocaleString('id-ID'),
+        formatJakartaDateTime(transaction.created_at),
         getPetugasName(transaction) || 'Unknown',
         transaction.total_tiket,
         transaction.status_transaksi.toUpperCase(),
@@ -450,7 +459,7 @@ export async function GET(request: Request) {
   XLSX.utils.book_append_sheet(workbook, worksheet, filters.mode === 'rekap' ? 'Rekap Harian' : 'Detail')
 
   const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' })
-  const fileName = `${filters.mode === 'rekap' ? 'Rekap_Harian' : 'Laporan_Detail'}_Banyupanas_${new Date().toISOString().split('T')[0]}.xlsx`
+  const fileName = `${filters.mode === 'rekap' ? 'Rekap_Harian' : 'Laporan_Detail'}_Banyupanas_${getJakartaTodayDate()}.xlsx`
 
   return new NextResponse(buffer, {
     headers: {
@@ -460,3 +469,5 @@ export async function GET(request: Request) {
     },
   })
 }
+
+

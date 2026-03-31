@@ -5,19 +5,14 @@ import { formatCurrency, getPetugasName, getTransactionRefund, isCancelledTransa
 import PrintTrigger from './print-trigger'
 import styles from './page.module.css'
 import PdfToolbarActions from './pdf-toolbar-actions'
+import { formatJakartaDateTime } from '@/utils/jakarta-time'
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('id-ID', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatJakartaDateTime(value)
 }
 
 export default async function ReportPdfPage({ searchParams }: PageProps) {
@@ -70,13 +65,7 @@ export default async function ReportPdfPage({ searchParams }: PageProps) {
             <div className={styles.metaRow}>
               <span>Dicetak</span>
               <strong>
-                {new Date().toLocaleString('id-ID', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {formatJakartaDateTime(new Date())}
               </strong>
             </div>
           </div>

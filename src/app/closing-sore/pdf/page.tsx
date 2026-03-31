@@ -3,6 +3,7 @@ import PrintTrigger from '@/app/laporan/pdf/print-trigger'
 import PdfToolbarActions from '../pdf-toolbar-actions'
 import styles from './page.module.css'
 import { formatDateDisplay, getClosingSummaryData } from '../closing-data'
+import { formatJakartaDateTime, getJakartaTodayDate } from '@/utils/jakarta-time'
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -26,7 +27,7 @@ export default async function ClosingSorePdfPage({ searchParams }: PageProps) {
   await checkSupervisorAccess()
 
   const params = (await searchParams) ?? {}
-  const closingDate = readValue(params, 'date') || new Date().toISOString().slice(0, 10)
+  const closingDate = readValue(params, 'date') || getJakartaTodayDate()
   const notes = readValue(params, 'notes')
   const summary = await getClosingSummaryData(closingDate)
 
@@ -61,13 +62,7 @@ export default async function ClosingSorePdfPage({ searchParams }: PageProps) {
             <div className={styles.metaRow}>
               <span>Dicetak</span>
               <strong>
-                {new Date().toLocaleString('id-ID', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {formatJakartaDateTime(new Date())}
               </strong>
             </div>
           </div>
