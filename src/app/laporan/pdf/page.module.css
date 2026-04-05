@@ -199,3 +199,19 @@
     break-inside: avoid;
   }
 }
+
+.stackCell {
+  display: grid;
+  gap: 4px;
+}
+
+.breakdownList {
+  display: grid;
+  gap: 2px;
+}
+
+.breakdownItem {
+  font-size: 10px;
+  color: #64748b;
+  line-height: 1.4;
+}

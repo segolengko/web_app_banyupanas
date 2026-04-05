@@ -21,6 +21,11 @@ export type TransactionProfile = {
 
 export type TransactionStatus = 'selesai' | 'dibatalkan'
 
+export type TicketBreakdownItem = {
+  categoryName: string
+  quantity: number
+}
+
 export type ReportTransaction = {
   id: string
   created_at: string
@@ -33,6 +38,7 @@ export type ReportTransaction = {
   cancel_reason: string | null
   cancelled_at: string | null
   users_profile: TransactionProfile | TransactionProfile[] | null
+  ticket_breakdown?: TicketBreakdownItem[]
 }
 
 export type ReportFilters = {
@@ -66,6 +72,7 @@ export type DailyReportRow = {
   expenses: number
   netRevenue: number
   revenue: number
+  categoryBreakdown?: TicketBreakdownItem[]
 }
 
 export type ExpensePaymentMethod = 'tunai' | 'transfer' | 'qris' | 'lainnya'
@@ -79,3 +86,5 @@ export type OperationalExpense = {
   payment_method: ExpensePaymentMethod
   created_by_name: string | null
 }
+
+

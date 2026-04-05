@@ -5,7 +5,7 @@ import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } 
 import { getEndDateExclusiveIso, getStartDateIso, parseReportFilters } from '@/utils/report-params'
 import { getPetugasName } from '@/utils/reporting'
 import { hasAllowedRole, SUPERVISOR_ROLES } from '@/utils/supabase/check-admin'
-import { formatJakartaDateFromKey, formatJakartaDateTime, getJakartaTodayDate } from '@/utils/jakarta-time'
+import { formatJakartaDateFromKey, formatJakartaDateTime, getJakartaDateKey, getJakartaTodayDate } from '@/utils/jakarta-time'
 
 function applyNumberFormat(
   worksheet: XLSX.WorkSheet,
@@ -135,6 +135,15 @@ type DailyExpenseRpcRow = {
   expenses: number | string
 }
 
+type TransactionDetailRow = {
+  transaksi_id: string
+  jumlah_tiket: number | string
+  kategori_tiket: {
+    nama_kategori: string | null
+  } | {
+    nama_kategori: string | null
+  }[] | null
+}
 const EXPORT_ROW_LIMIT = 100000
 
 function asArray<T>(value: unknown): T[] {
@@ -153,6 +162,107 @@ function asFirstItem<T>(value: unknown): T | null {
   return null
 }
 
+
+function resolveCategoryName(detail: TransactionDetailRow) {
+  if (Array.isArray(detail.kategori_tiket)) {
+    return detail.kategori_tiket[0]?.nama_kategori ?? null
+  }
+
+  if (detail.kategori_tiket && typeof detail.kategori_tiket === 'object') {
+    return detail.kategori_tiket.nama_kategori ?? null
+  }
+
+  return null
+}
+
+function formatCategoryBreakdown(items?: { categoryName: string; quantity: number }[]) {
+  if (!items || items.length === 0) {
+    return '-'
+  }
+
+  return items.map((item) => `${item.categoryName}: ${item.quantity}`).join('\n')
+}
+
+async function attachRecapCategoryBreakdown(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  recapRows: DailyReportRow[],
+  filters: ReportFilters
+) {
+  if (recapRows.length === 0) {
+    return recapRows
+  }
+
+  try {
+    const visibleDateKeys = Array.from(new Set(recapRows.map((row) => row.dateKey))).sort()
+    const startIso = getStartDateIso(visibleDateKeys[0])
+    const endIso = getEndDateExclusiveIso(visibleDateKeys[visibleDateKeys.length - 1])
+    const { data: visibleTransactions, error: visibleTransactionsError } = await supabase
+      .rpc('report_filtered_transactions', {
+        p_start: startIso,
+        p_end: endIso,
+        p_status: filters.status === 'semua' ? null : filters.status,
+        p_search: filters.searchTerm.trim() || null,
+        p_page: 1,
+        p_page_size: 5000,
+      })
+      .returns<ReportTransactionRpcRow[]>()
+
+    if (visibleTransactionsError) {
+      console.error('Gagal memuat transaksi untuk breakdown export rekap:', visibleTransactionsError.message)
+      return recapRows
+    }
+
+    const normalizedVisibleTransactions = asArray<ReportTransactionRpcRow>(visibleTransactions)
+    if (normalizedVisibleTransactions.length === 0) {
+      return recapRows
+    }
+
+    const transactionIds = normalizedVisibleTransactions.map((transaction) => transaction.id)
+    const transactionDateMap = new Map(
+      normalizedVisibleTransactions.map((transaction) => [transaction.id, getJakartaDateKey(transaction.created_at)])
+    )
+
+    const { data: detailRows, error: detailError } = await supabase
+      .from('transaksi_detail')
+      .select('transaksi_id,jumlah_tiket,kategori_tiket(nama_kategori)')
+      .in('transaksi_id', transactionIds)
+
+    if (detailError) {
+      console.error('Gagal memuat detail kategori tiket export rekap:', detailError.message)
+      return recapRows
+    }
+
+    const groupedByDate = new Map<string, Map<string, number>>()
+
+    for (const detail of asArray<TransactionDetailRow>(detailRows)) {
+      const dateKey = transactionDateMap.get(detail.transaksi_id)
+      if (!dateKey) {
+        continue
+      }
+
+      const categoryName = resolveCategoryName(detail) ?? 'Kategori tiket'
+      if (!groupedByDate.has(dateKey)) {
+        groupedByDate.set(dateKey, new Map())
+      }
+
+      const categoryMap = groupedByDate.get(dateKey)
+      categoryMap?.set(categoryName, (categoryMap?.get(categoryName) ?? 0) + toNumber(detail.jumlah_tiket))
+    }
+
+    return recapRows.map((row) => ({
+      ...row,
+      categoryBreakdown: Array.from((groupedByDate.get(row.dateKey) ?? new Map<string, number>()).entries()).map(
+        ([categoryName, quantity]) => ({
+          categoryName,
+          quantity,
+        })
+      ),
+    }))
+  } catch (error) {
+    console.error('Gagal menyusun breakdown kategori tiket export rekap:', error)
+    return recapRows
+  }
+}
 function toNumber(value: number | string | null | undefined) {
   if (typeof value === 'number') {
     return value
@@ -293,9 +403,13 @@ export async function GET(request: Request) {
   const summaryRpcParams = createSummaryRpcParams(filters)
   const expenseRpcParams = createExpenseRpcParams(filters)
 
-  const { data: summaryRows } = await supabase
+  const { data: summaryRows, error: summaryError } = await supabase
     .rpc('report_transaction_summary', summaryRpcParams)
     .returns<ReportSummaryRpcRow>()
+
+  if (summaryError) {
+    throw new Error(`Gagal memuat ringkasan laporan: ${summaryError.message}`)
+  }
 
   const normalizedSummary = asFirstItem<ReportSummaryRpcRow>(summaryRows)
 
@@ -312,48 +426,72 @@ export async function GET(request: Request) {
         transactionCount: 0,
       }
 
-  const { data: expenseSummaryRows } = await supabase
+  const { data: expenseSummaryRows, error: expenseSummaryError } = await supabase
     .rpc('report_expense_summary', expenseRpcParams)
     .returns<ExpenseSummaryRpcRow>()
+
+  if (expenseSummaryError) {
+    throw new Error(`Gagal memuat ringkasan pengeluaran: ${expenseSummaryError.message}`)
+  }
 
   const normalizedExpenseSummary = asFirstItem<ExpenseSummaryRpcRow>(expenseSummaryRows)
   summary.expenses = normalizedExpenseSummary ? toNumber(normalizedExpenseSummary.expenses) : 0
   summary.netRevenue = summary.revenue - summary.expenses
 
-  const { data: detailRows } = await supabase
-    .rpc('report_filtered_transactions', rpcParams)
-    .returns<ReportTransactionRpcRow[]>()
+  let transactions: ReportTransaction[] = []
+  let recapRows: DailyReportRow[] = []
 
-  const { data: optimizedRecapResult, error: optimizedRecapError } = await supabase
-    .rpc('report_daily_recap_with_expenses', {
-      ...rpcParams,
-      p_page: 1,
-      p_page_size: EXPORT_ROW_LIMIT,
-    })
-    .returns<DailyReportRpcRow[]>()
-
-  const transactions = asArray<ReportTransactionRpcRow>(detailRows).map(mapTransactionRow)
-  let recapRows: DailyReportRow[]
-
-  if (!optimizedRecapError) {
-    recapRows = asArray<DailyReportRpcRow>(optimizedRecapResult).map(mapRecapRow)
-  } else {
-    const { data: recapResult } = await supabase
-      .rpc('report_daily_recap', {
+  if (filters.mode === 'rekap') {
+    const { data: optimizedRecapResult, error: optimizedRecapError } = await supabase
+      .rpc('report_daily_recap_with_expenses', {
         ...rpcParams,
         p_page: 1,
         p_page_size: EXPORT_ROW_LIMIT,
       })
       .returns<DailyReportRpcRow[]>()
 
-    const { data: expenseRecapRows } = await supabase
-      .rpc('report_daily_expenses', expenseRpcParams)
-      .returns<DailyExpenseRpcRow[]>()
+    if (!optimizedRecapError) {
+      recapRows = asArray<DailyReportRpcRow>(optimizedRecapResult).map(mapRecapRow)
+    } else {
+      const { data: recapResult, error: recapError } = await supabase
+        .rpc('report_daily_recap', {
+          ...rpcParams,
+          p_page: 1,
+          p_page_size: EXPORT_ROW_LIMIT,
+        })
+        .returns<DailyReportRpcRow[]>()
 
-    recapRows = mergeRecapRows(
-      asArray<DailyReportRpcRow>(recapResult).map(mapRecapRow),
-      asArray<DailyExpenseRpcRow>(expenseRecapRows)
-    )
+      if (recapError) {
+        throw new Error(`Gagal memuat rekap harian: ${recapError.message}`)
+      }
+
+      const { data: expenseRecapRows, error: expenseRecapError } = await supabase
+        .rpc('report_daily_expenses', expenseRpcParams)
+        .returns<DailyExpenseRpcRow[]>()
+
+      if (expenseRecapError) {
+        throw new Error(`Gagal memuat pengeluaran harian: ${expenseRecapError.message}`)
+      }
+
+      recapRows = mergeRecapRows(
+        asArray<DailyReportRpcRow>(recapResult).map(mapRecapRow),
+        asArray<DailyExpenseRpcRow>(expenseRecapRows)
+      )
+    }
+  } else {
+    const { data: detailRows, error: detailError } = await supabase
+      .rpc('report_filtered_transactions', rpcParams)
+      .returns<ReportTransactionRpcRow[]>()
+
+    if (detailError) {
+      throw new Error(`Gagal memuat detail transaksi: ${detailError.message}`)
+    }
+
+    transactions = asArray<ReportTransactionRpcRow>(detailRows).map(mapTransactionRow)
+  }
+
+  if (filters.mode === 'rekap') {
+    recapRows = await attachRecapCategoryBreakdown(supabase, recapRows, filters)
   }
 
   const reportTitle = filters.mode === 'rekap' ? 'Laporan Rekap Harian' : 'Laporan Detail Transaksi'
@@ -373,14 +511,16 @@ export async function GET(request: Request) {
 
   if (filters.mode === 'rekap') {
     worksheetRows.push(
-      ['Tanggal', 'Jumlah Transaksi', 'Dibatalkan', 'Tiket Valid', 'Diskon', 'Refund', 'Pengeluaran', 'Saldo Bersih'],
+      ['Tanggal', 'Jumlah Transaksi', 'Dibatalkan', 'Tiket Valid', 'Breakdown Kategori', 'Diskon', 'Refund', 'Pendapatan Tiket', 'Pengeluaran', 'Saldo Bersih'],
       ...recapRows.map((row: DailyReportRow) => [
         row.label,
         row.transactionCount,
         row.cancelledCount,
         row.tickets,
+        formatCategoryBreakdown(row.categoryBreakdown),
         row.discount,
         row.refund,
+        row.revenue,
         row.expenses,
         row.netRevenue,
       ])
@@ -391,8 +531,10 @@ export async function GET(request: Request) {
       { wch: 18 },
       { wch: 14 },
       { wch: 12 },
+      { wch: 28 },
       { wch: 14 },
       { wch: 14 },
+      { wch: 16 },
       { wch: 16 },
       { wch: 18 },
     ]
@@ -444,12 +586,12 @@ export async function GET(request: Request) {
   const workbook = XLSX.utils.book_new()
   const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows)
   worksheet['!cols'] = columnWidths
-  worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: filters.mode === 'rekap' ? 7 : 10 } }]
+  worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: filters.mode === 'rekap' ? 9 : 10 } }]
 
   if (filters.mode === 'rekap') {
-    applyNumberFormat(worksheet, 5, 4 + recapRows.length, [1, 2, 3, 4, 5, 6, 7])
+    applyNumberFormat(worksheet, 5, 4 + recapRows.length, [1, 2, 3, 5, 6, 7, 8, 9])
     applyNumberFormat(worksheet, 8 + recapRows.length, 14 + recapRows.length, [1])
-    applyWorksheetLayout(worksheet, 4, 4 + recapRows.length, 7)
+    applyWorksheetLayout(worksheet, 4, 4 + recapRows.length, 9)
   } else {
     applyNumberFormat(worksheet, 5, 4 + transactions.length, [3, 5, 6, 7, 8])
     applyNumberFormat(worksheet, 8 + transactions.length, 14 + transactions.length, [1])
@@ -469,5 +611,10 @@ export async function GET(request: Request) {
     },
   })
 }
+
+
+
+
+
 
 

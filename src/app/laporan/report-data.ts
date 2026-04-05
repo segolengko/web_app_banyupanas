@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
-import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction } from '@/types/admin'
+import type { DailyReportRow, ReportFilters, ReportSummary, ReportTransaction, TicketBreakdownItem } from '@/types/admin'
 import { REPORT_PAGE_SIZE, getEndDateExclusiveIso, getStartDateIso } from '@/utils/report-params'
-import { formatJakartaDateFromKey } from '@/utils/jakarta-time'
+import { formatJakartaDateFromKey, getJakartaDateKey } from '@/utils/jakarta-time'
 
 type ReportTransactionRpcRow = {
   id: string
@@ -50,6 +50,16 @@ type DailyExpenseRpcRow = {
   expenses: number | string
 }
 
+type TransactionDetailRow = {
+  transaksi_id: string
+  jumlah_tiket: number | string
+  kategori_tiket: {
+    nama_kategori: string | null
+  } | {
+    nama_kategori: string | null
+  }[] | null
+}
+
 export type ReportPageData = {
   transactions: ReportTransaction[]
   recapRows: DailyReportRow[]
@@ -74,6 +84,68 @@ function asFirstItem<T>(value: unknown): T | null {
   return null
 }
 
+function resolveCategoryName(detail: TransactionDetailRow) {
+  if (Array.isArray(detail.kategori_tiket)) {
+    return detail.kategori_tiket[0]?.nama_kategori ?? null
+  }
+
+  if (detail.kategori_tiket && typeof detail.kategori_tiket === 'object') {
+    return detail.kategori_tiket.nama_kategori ?? null
+  }
+
+  return null
+}
+
+function mapTicketBreakdown(details: TransactionDetailRow[]) {
+  const grouped = new Map<string, number>()
+
+  for (const detail of details) {
+    const categoryName = resolveCategoryName(detail) ?? 'Kategori tiket'
+    grouped.set(categoryName, (grouped.get(categoryName) ?? 0) + toNumber(detail.jumlah_tiket))
+  }
+
+  return Array.from(grouped.entries()).map(([categoryName, quantity]) => ({
+    categoryName,
+    quantity,
+  })) satisfies TicketBreakdownItem[]
+}
+
+async function attachTicketBreakdown(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  transactions: ReportTransaction[]
+) {
+  if (transactions.length === 0) {
+    return transactions
+  }
+
+  const transactionIds = transactions.map((transaction) => transaction.id)
+  const { data, error } = await supabase
+    .from('transaksi_detail')
+    .select('transaksi_id,jumlah_tiket,kategori_tiket(nama_kategori)')
+    .in('transaksi_id', transactionIds)
+    .order('id', { ascending: true })
+
+  if (error) {
+    throw new Error(`Gagal memuat detail kategori tiket: ${error.message}`)
+  }
+
+  const detailRows = asArray<TransactionDetailRow>(data)
+  const grouped = new Map<string, TransactionDetailRow[]>()
+
+  for (const detail of detailRows) {
+    const transactionId = detail.transaksi_id
+    if (!grouped.has(transactionId)) {
+      grouped.set(transactionId, [])
+    }
+
+    grouped.get(transactionId)?.push(detail)
+  }
+
+  return transactions.map((transaction) => ({
+    ...transaction,
+    ticket_breakdown: mapTicketBreakdown(grouped.get(transaction.id) ?? []),
+  }))
+}
 function toNumber(value: number | string | null | undefined) {
   if (typeof value === 'number') {
     return value
@@ -202,6 +274,87 @@ function mergeRecapRows(rows: DailyReportRow[], expenseRows: DailyExpenseRpcRow[
   return Array.from(grouped.values()).sort((left, right) => right.dateKey.localeCompare(left.dateKey))
 }
 
+
+async function attachRecapCategoryBreakdown(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  recapRows: DailyReportRow[],
+  filters: ReportFilters
+) {
+  if (recapRows.length === 0) {
+    return recapRows
+  }
+
+  try {
+    const visibleDateKeys = Array.from(new Set(recapRows.map((row) => row.dateKey))).sort()
+    const startIso = getStartDateIso(visibleDateKeys[0])
+    const endIso = getEndDateExclusiveIso(visibleDateKeys[visibleDateKeys.length - 1])
+    const { data: visibleTransactions, error: visibleTransactionsError } = await supabase
+      .rpc('report_filtered_transactions', {
+        p_start: startIso,
+        p_end: endIso,
+        p_status: filters.status === 'semua' ? null : filters.status,
+        p_search: filters.searchTerm.trim() || null,
+        p_page: 1,
+        p_page_size: 5000,
+      })
+      .returns<ReportTransactionRpcRow[]>()
+
+    if (visibleTransactionsError) {
+      console.error('Gagal memuat transaksi untuk breakdown rekap:', visibleTransactionsError.message)
+      return recapRows
+    }
+
+    const normalizedVisibleTransactions = asArray<ReportTransactionRpcRow>(visibleTransactions)
+    if (normalizedVisibleTransactions.length === 0) {
+      return recapRows
+    }
+
+    const transactionIds = normalizedVisibleTransactions.map((transaction) => transaction.id)
+    const transactionDateMap = new Map(
+      normalizedVisibleTransactions.map((transaction) => [transaction.id, getJakartaDateKey(transaction.created_at)])
+    )
+
+    const { data: detailRows, error: detailError } = await supabase
+      .from('transaksi_detail')
+      .select('transaksi_id,jumlah_tiket,kategori_tiket(nama_kategori)')
+      .in('transaksi_id', transactionIds)
+
+    if (detailError) {
+      console.error('Gagal memuat detail kategori tiket rekap:', detailError.message)
+      return recapRows
+    }
+
+    const groupedByDate = new Map<string, Map<string, number>>()
+
+    for (const detail of asArray<TransactionDetailRow>(detailRows)) {
+      const dateKey = transactionDateMap.get(detail.transaksi_id)
+      if (!dateKey) {
+        continue
+      }
+
+      const categoryName = resolveCategoryName(detail) ?? 'Kategori tiket'
+      if (!groupedByDate.has(dateKey)) {
+        groupedByDate.set(dateKey, new Map())
+      }
+
+      const categoryMap = groupedByDate.get(dateKey)
+      categoryMap?.set(categoryName, (categoryMap?.get(categoryName) ?? 0) + toNumber(detail.jumlah_tiket))
+    }
+
+    return recapRows.map((row) => ({
+      ...row,
+      categoryBreakdown: Array.from((groupedByDate.get(row.dateKey) ?? new Map<string, number>()).entries()).map(
+        ([categoryName, quantity]) => ({
+          categoryName,
+          quantity,
+        })
+      ) satisfies TicketBreakdownItem[],
+    }))
+  } catch (error) {
+    console.error('Gagal menyusun breakdown kategori tiket rekap:', error)
+    return recapRows
+  }
+}
 export async function getReportPageData(filters: ReportFilters, options?: { pageSize?: number; forceAllRows?: boolean }) {
   const supabase = await createClient()
   const pageSize = options?.pageSize ?? REPORT_PAGE_SIZE
@@ -224,9 +377,13 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
     transactionCount: 0,
   }
 
-  const { data: summaryRows } = await supabase
+  const { data: summaryRows, error: summaryError } = await supabase
     .rpc('report_transaction_summary', summaryRpcParams)
     .returns<ReportSummaryRpcRow>()
+
+  if (summaryError) {
+    throw new Error(`Gagal memuat ringkasan laporan: ${summaryError.message}`)
+  }
 
   const normalizedSummary = asFirstItem<ReportSummaryRpcRow>(summaryRows)
 
@@ -234,9 +391,13 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
     summary = mapSummaryRow(normalizedSummary)
   }
 
-  const { data: expenseSummaryRows } = await supabase
+  const { data: expenseSummaryRows, error: expenseSummaryError } = await supabase
     .rpc('report_expense_summary', createExpenseRpcParams(filters))
     .returns<ExpenseSummaryRpcRow>()
+
+  if (expenseSummaryError) {
+    throw new Error(`Gagal memuat ringkasan pengeluaran: ${expenseSummaryError.message}`)
+  }
 
   const normalizedExpenseSummary = asFirstItem<ExpenseSummaryRpcRow>(expenseSummaryRows)
 
@@ -263,18 +424,26 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
       recapRows = normalizedRecapRows.map(mapRecapRow)
       totalItems = toNumber(normalizedRecapRows[0]?.total_items) || recapRows.length
     } else {
-      const { data: recapResult } = await supabase
+      const { data: recapResult, error: recapError } = await supabase
         .rpc('report_daily_recap', {
           ...rpcParams,
           p_page: 1,
-          p_page_size: fetchAll ? 5000 : pageSize,
+          p_page_size: 5000,
         })
         .returns<DailyReportRpcRow[]>()
 
+      if (recapError) {
+        throw new Error(`Gagal memuat rekap harian: ${recapError.message}`)
+      }
+
       const normalizedRecapRows = asArray<DailyReportRpcRow>(recapResult)
-      const { data: expenseRecapRows } = await supabase
+      const { data: expenseRecapRows, error: expenseRecapError } = await supabase
         .rpc('report_daily_expenses', createExpenseRpcParams(filters))
         .returns<DailyExpenseRpcRow[]>()
+
+      if (expenseRecapError) {
+        throw new Error(`Gagal memuat pengeluaran harian: ${expenseRecapError.message}`)
+      }
 
       const mergedRecapRows = mergeRecapRows(
         normalizedRecapRows.map(mapRecapRow),
@@ -292,7 +461,7 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
       }
     }
   } else {
-    const { data: detailRows } = await supabase
+    const { data: detailRows, error: detailError } = await supabase
       .rpc('report_filtered_transactions', {
         ...rpcParams,
         p_page: fetchAll ? 1 : rpcParams.p_page,
@@ -300,9 +469,17 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
       })
       .returns<ReportTransactionRpcRow[]>()
 
+    if (detailError) {
+      throw new Error(`Gagal memuat detail transaksi: ${detailError.message}`)
+    }
+
     const normalizedDetailRows = asArray<ReportTransactionRpcRow>(detailRows)
-    transactions = normalizedDetailRows.map(mapTransactionRow)
+    transactions = await attachTicketBreakdown(supabase, normalizedDetailRows.map(mapTransactionRow))
     totalItems = toNumber(normalizedDetailRows[0]?.total_items)
+  }
+
+  if (filters.mode === 'rekap') {
+    recapRows = await attachRecapCategoryBreakdown(supabase, recapRows, filters)
   }
 
   totalPages = totalItems > 0 ? Math.ceil(totalItems / pageSize) : 1
@@ -315,5 +492,8 @@ export async function getReportPageData(filters: ReportFilters, options?: { page
     totalPages,
   } satisfies ReportPageData
 }
+
+
+
 
 

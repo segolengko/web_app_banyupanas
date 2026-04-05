@@ -15,6 +15,21 @@ function formatDateTime(value: string) {
   return formatJakartaDateTime(value)
 }
 
+function renderCategoryBreakdown(items?: { categoryName: string; quantity: number }[]) {
+  if (!items || items.length === 0) {
+    return null
+  }
+
+  return (
+    <div className={styles.breakdownList}>
+      {items.map((item) => (
+        <div key={`${item.categoryName}-${item.quantity}`} className={styles.breakdownItem}>
+          {item.categoryName}: {item.quantity}
+        </div>
+      ))}
+    </div>
+  )
+}
 export default async function ReportPdfPage({ searchParams }: PageProps) {
   await checkSupervisorAccess()
 
@@ -163,6 +178,7 @@ export default async function ReportPdfPage({ searchParams }: PageProps) {
                   <th>Tiket Valid</th>
                   <th>Diskon</th>
                   <th>Refund</th>
+                  <th>Pendapatan Tiket</th>
                   <th>Pengeluaran</th>
                   <th>Saldo Bersih</th>
                 </tr>
@@ -174,16 +190,22 @@ export default async function ReportPdfPage({ searchParams }: PageProps) {
                       <td>{row.label}</td>
                       <td>{row.transactionCount}</td>
                       <td>{row.cancelledCount}</td>
-                      <td>{row.tickets}</td>
+                      <td>
+                        <div className={styles.stackCell}>
+                          <strong>{row.tickets} Tiket</strong>
+                          {renderCategoryBreakdown(row.categoryBreakdown)}
+                        </div>
+                      </td>
                       <td>{row.discount > 0 ? `-${formatCurrency(row.discount)}` : '-'}</td>
                       <td>{row.refund > 0 ? formatCurrency(row.refund) : '-'}</td>
+                      <td>{row.revenue > 0 ? formatCurrency(row.revenue) : '-'}</td>
                       <td>{row.expenses > 0 ? formatCurrency(row.expenses) : '-'}</td>
                       <td>{formatCurrency(row.netRevenue)}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className={styles.empty}>Tidak ada data rekap.</td>
+                    <td colSpan={9} className={styles.empty}>Tidak ada data rekap.</td>
                   </tr>
                 )}
               </tbody>
@@ -194,3 +216,5 @@ export default async function ReportPdfPage({ searchParams }: PageProps) {
     </main>
   )
 }
+
+

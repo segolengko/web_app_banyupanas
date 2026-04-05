@@ -45,6 +45,7 @@ export default function ReportList({
       searchTerm: filters.searchTerm,
       startDate: filters.startDate,
       endDate: filters.endDate,
+      status: filters.status,
     })
 
     const query = params.toString()
@@ -250,6 +251,7 @@ export default function ReportList({
                   <th style={{ padding: '20px' }}>Tiket Valid</th>
                   <th style={{ padding: '20px' }}>Diskon</th>
                   <th style={{ padding: '20px' }}>Refund</th>
+                  <th style={{ padding: '20px' }}>Pendapatan Tiket</th>
                   <th style={{ padding: '20px' }}>Pengeluaran</th>
                   <th style={{ padding: '20px' }}>Saldo Bersih</th>
                 </tr>
@@ -272,7 +274,20 @@ export default function ReportList({
                           {formatJakartaDateTime(transaction.created_at)}
                         </td>
                         <td style={{ padding: '20px' }}>{petugasName || '-'}</td>
-                        <td style={{ padding: '20px', fontWeight: '600' }}>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</td>
+                        <td style={{ padding: '20px', fontWeight: '600' }}>
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <span>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</span>
+                            {!cancelled && transaction.ticket_breakdown && transaction.ticket_breakdown.length > 0 ? (
+                              <div style={{ display: 'grid', gap: '4px' }}>
+                                {transaction.ticket_breakdown.map((item) => (
+                                  <small key={`${transaction.id}-${item.categoryName}`} style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                    {item.categoryName}: {item.quantity}
+                                  </small>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
                         <td style={{ padding: '20px' }}>
                           <div
                             style={{
@@ -341,12 +356,28 @@ export default function ReportList({
                       <td style={{ padding: '20px', color: row.cancelledCount > 0 ? '#FCA5A5' : 'var(--text-muted)', fontWeight: '700' }}>
                         {row.cancelledCount} Transaksi
                       </td>
-                      <td style={{ padding: '20px', fontWeight: '600' }}>{row.tickets} Tiket</td>
+                      <td style={{ padding: '20px', fontWeight: '600' }}>
+                        <div style={{ display: 'grid', gap: '6px' }}>
+                          <span>{row.tickets} Tiket</span>
+                          {row.categoryBreakdown && row.categoryBreakdown.length > 0 ? (
+                            <div style={{ display: 'grid', gap: '4px' }}>
+                              {row.categoryBreakdown.map((item) => (
+                                <small key={`${row.dateKey}-${item.categoryName}`} style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                  {item.categoryName}: {item.quantity}
+                                </small>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
                       <td style={{ padding: '20px', color: row.discount > 0 ? '#F87171' : 'var(--text-muted)' }}>
                         {row.discount > 0 ? `-${formatCurrency(row.discount)}` : '-'}
                       </td>
                       <td style={{ padding: '20px', color: row.refund > 0 ? '#FCA5A5' : 'var(--text-muted)', fontWeight: '700' }}>
                         {row.refund > 0 ? formatCurrency(row.refund) : '-'}
+                      </td>
+                      <td style={{ padding: '20px', color: row.revenue > 0 ? '#4ade80' : 'var(--text-muted)', fontWeight: '700' }}>
+                        {row.revenue > 0 ? formatCurrency(row.revenue) : '-'}
                       </td>
                       <td style={{ padding: '20px', color: row.expenses > 0 ? '#FBBF24' : 'var(--text-muted)', fontWeight: '700' }}>
                         {row.expenses > 0 ? formatCurrency(row.expenses) : '-'}
@@ -393,6 +424,15 @@ export default function ReportList({
                       <div>
                         <span>Jumlah</span>
                         <strong>{cancelled ? '0 Tiket' : `${transaction.total_tiket} Tiket`}</strong>
+                        {!cancelled && transaction.ticket_breakdown && transaction.ticket_breakdown.length > 0 ? (
+                          <div style={{ display: 'grid', gap: '2px', marginTop: '6px' }}>
+                            {transaction.ticket_breakdown.map((item) => (
+                              <small key={`${transaction.id}-${item.categoryName}`} style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                {item.categoryName}: {item.quantity}
+                              </small>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                       <div>
                         <span>Diskon</span>
@@ -460,6 +500,15 @@ export default function ReportList({
                   <div>
                     <span>Tiket Valid</span>
                     <strong>{row.tickets} Tiket</strong>
+                    {row.categoryBreakdown && row.categoryBreakdown.length > 0 ? (
+                      <div style={{ display: 'grid', gap: '2px', marginTop: '6px' }}>
+                        {row.categoryBreakdown.map((item) => (
+                          <small key={`${row.dateKey}-${item.categoryName}`} style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            {item.categoryName}: {item.quantity}
+                          </small>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div>
                     <span>Diskon</span>
@@ -468,6 +517,10 @@ export default function ReportList({
                   <div>
                     <span>Refund</span>
                     <strong>{row.refund > 0 ? formatCurrency(row.refund) : '-'}</strong>
+                  </div>
+                  <div>
+                    <span>Pendapatan Tiket</span>
+                    <strong>{row.revenue > 0 ? formatCurrency(row.revenue) : '-'}</strong>
                   </div>
                   <div>
                     <span>Pengeluaran</span>
@@ -1204,5 +1257,11 @@ export default function ReportList({
     </>
   )
 }
+
+
+
+
+
+
 
 
